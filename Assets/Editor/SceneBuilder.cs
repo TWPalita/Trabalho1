@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
@@ -34,10 +35,10 @@ public static class SceneBuilder
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode) return;
 
-        string versionFile = "Temp/SceneBuilder_v9.tmp";
+        string versionFile = "Temp/SceneBuilder_v11.tmp";
         if (!System.IO.File.Exists(versionFile))
         {
-            System.IO.File.WriteAllText(versionFile, "v9");
+            System.IO.File.WriteAllText(versionFile, "v11");
             BuildAllScenes();
         }
     }
@@ -237,6 +238,7 @@ public static class SceneBuilder
         // 3. XR Origin posicionado exatamente no assento do piloto com trava de assento
         GameObject xrRigPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(XROriginPrefabPath);
         GameObject xrRigInstance = null;
+        VRWeaponController weapRightInstance = null;
         if (xrRigPrefab != null)
         {
             xrRigInstance = (GameObject)PrefabUtility.InstantiatePrefab(xrRigPrefab);
@@ -246,14 +248,55 @@ public static class SceneBuilder
 
             xrRigInstance.AddComponent<CockpitSeatedRig>();
 
+            // Extrai referências de Input Action para Activate e Select dos controladores
+            InputActionReference rActivateRef = null;
+            InputActionReference rSelectRef = null;
+            InputActionReference lActivateRef = null;
+            InputActionReference lSelectRef = null;
+
+            var subAssets = AssetDatabase.LoadAllAssetsAtPath(InputActionsAssetPath);
+            if (subAssets != null)
+            {
+                foreach (var asset in subAssets)
+                {
+                    if (asset is InputActionReference iar && iar.action != null)
+                    {
+                        string map = iar.action.actionMap?.name;
+                        string act = iar.action.name;
+
+                        if (map == "XRI Right Interaction")
+                        {
+                            if (act == "Activate") rActivateRef = iar;
+                            else if (act == "Select") rSelectRef = iar;
+                        }
+                        else if (map == "XRI Left Interaction")
+                        {
+                            if (act == "Activate") lActivateRef = iar;
+                            else if (act == "Select") lSelectRef = iar;
+                        }
+                    }
+                }
+            }
+
             // Anexa VRWeaponController em ambos os controladores VR (Dual-Wielding)
             Transform rightController = FindChildRecursive(xrRigInstance.transform, "Right Controller");
             if (rightController != null)
             {
                 var weapRight = rightController.gameObject.AddComponent<VRWeaponController>();
+                weapRightInstance = weapRight;
                 SerializedObject rSO = new SerializedObject(weapRight);
                 rSO.FindProperty("controllerNode").enumValueIndex = (int)UnityEngine.XR.XRNode.RightHand;
                 rSO.FindProperty("laserColor").colorValue = new Color(0.2f, 1f, 0.4f, 1f); // Laser Verde
+                if (rActivateRef != null)
+                {
+                    var trigProp = rSO.FindProperty("triggerAction").FindPropertyRelative("m_Reference");
+                    if (trigProp != null) trigProp.objectReferenceValue = rActivateRef;
+                }
+                if (rSelectRef != null)
+                {
+                    var selProp = rSO.FindProperty("selectAction").FindPropertyRelative("m_Reference");
+                    if (selProp != null) selProp.objectReferenceValue = rSelectRef;
+                }
                 rSO.ApplyModifiedProperties();
                 rightController.gameObject.name = "Right Controller (VR Blaster)";
             }
@@ -265,6 +308,16 @@ public static class SceneBuilder
                 SerializedObject lSO = new SerializedObject(weapLeft);
                 lSO.FindProperty("controllerNode").enumValueIndex = (int)UnityEngine.XR.XRNode.LeftHand;
                 lSO.FindProperty("laserColor").colorValue = new Color(0.2f, 0.85f, 1f, 1f); // Laser Ciano
+                if (lActivateRef != null)
+                {
+                    var trigProp = lSO.FindProperty("triggerAction").FindPropertyRelative("m_Reference");
+                    if (trigProp != null) trigProp.objectReferenceValue = lActivateRef;
+                }
+                if (lSelectRef != null)
+                {
+                    var selProp = lSO.FindProperty("selectAction").FindPropertyRelative("m_Reference");
+                    if (selProp != null) selProp.objectReferenceValue = lSelectRef;
+                }
                 lSO.ApplyModifiedProperties();
                 leftController.gameObject.name = "Left Controller (VR Blaster)";
             }
@@ -288,11 +341,11 @@ public static class SceneBuilder
         Transform[] spawnPoints = new Transform[5];
         Vector3[] spawnPositions = new Vector3[]
         {
-            new Vector3(-5.0f, 3.8f, 16.0f), // Alto Esq (17)
-            new Vector3(5.0f, 3.8f, 16.0f),  // Alto Dir (8)
-            new Vector3(0.0f, 2.5f, 17.5f),  // Centro (12)
-            new Vector3(-6.5f, 1.2f, 13.5f), // Baixo/Médio Esq (5)
-            new Vector3(6.5f, 1.2f, 13.5f)   // Baixo/Médio Dir (10)
+            new Vector3(-5.5f, 5.8f, 16.0f), // Alto Esq (17)
+            new Vector3(5.5f, 5.8f, 16.0f),  // Alto Dir (8)
+            new Vector3(0.0f, 4.6f, 17.5f),  // Centro (12)
+            new Vector3(-6.5f, 3.4f, 14.5f), // Baixo/Médio Esq (5)
+            new Vector3(6.5f, 3.4f, 14.5f)   // Baixo/Médio Dir (10)
         };
 
         for (int i = 0; i < 5; i++)
@@ -304,7 +357,7 @@ public static class SceneBuilder
         }
 
         // 6. Poeira/Estrelas Espaciais
-        CreateStarfield(new Vector3(0f, 1.5f, 10f));
+        CreateStarfield(new Vector3(0f, 3.5f, 12f));
 
         // 7. Gerenciador de Áudio
         GameObject audioObj = new GameObject("SoundEffectsManager");
@@ -331,6 +384,10 @@ public static class SceneBuilder
         for (int i = 0; i < spawnPoints.Length; i++)
         {
             spProp.GetArrayElementAtIndex(i).objectReferenceValue = spawnPoints[i];
+        }
+        if (weapRightInstance != null)
+        {
+            defSO.FindProperty("weaponController").objectReferenceValue = weapRightInstance;
         }
         defSO.ApplyModifiedProperties();
 
