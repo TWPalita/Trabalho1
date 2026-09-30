@@ -1,79 +1,203 @@
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using TMPro;
 
+/// <summary>
+/// Gerente de matemática integrado ao sistema VR, compatível com a cena existente.
+/// </summary>
 public class GerenteMatematica : MonoBehaviour
 {
-    public TMP_Text telaDaConta; // Onde aparece o "2 + 2 = ?"
-    public GameObject lixoMolde; // O Prefab do lixo que criamos
-    public Transform[] lugaresParaNascer; // Pontos de onde o lixo vai surgir
+    public static GerenteMatematica Instance { get; private set; }
+
+    [Header("Referências da Cena")]
+    public TMP_Text telaDaConta;
+    public GameObject lixoMolde;
+    public Transform[] lugaresParaNascer;
+
+    [Header("Configuração de Operações")]
+    public MathOperationType tipoOperacao = MathOperationType.Mixed;
+    public int numeroMinimo = 1;
+    public int numeroMaximo = 12;
 
     private int respostaCerta;
+    private List<GameObject> lixosAtivos = new List<GameObject>();
+    private bool aguardandoProximaRodada = false;
 
-    void Start()
+    private void Awake()
+    {
+        if (Instance == null) Instance = this;
+        else if (Instance != this) Destroy(gameObject);
+    }
+
+    private void Start()
     {
         CriarNovaConta();
     }
 
     public void CriarNovaConta()
     {
-        // Sorteia dois números de 1 a 5
-        int numero1 = Random.Range(1, 6);
-        int numero2 = Random.Range(1, 6);
+        aguardandoProximaRodada = false;
+        LimparLixos();
 
-        // Calcula a resposta
-        respostaCerta = numero1 + numero2;
+        // 1. Gera operação usando MathManager se disponível ou internamente
+        int numero1 = 0;
+        int numero2 = 0;
+        string sinal = "+";
 
-        // Mostra no painel
-        telaDaConta.text = numero1 + " + " + numero2 + " = ?";
+        int op = (int)tipoOperacao;
+        if (tipoOperacao == MathOperationType.Mixed)
+        {
+            op = Random.Range(0, 3);
+        }
 
-        // Cria os lixos no espaço
+        switch (op)
+        {
+            case 0: // Adição
+                numero1 = Random.Range(numeroMinimo, numeroMaximo + 1);
+                numero2 = Random.Range(numeroMinimo, numeroMaximo + 1);
+                respostaCerta = numero1 + numero2;
+                sinal = "+";
+                break;
+
+            case 1: // Subtração
+                numero1 = Random.Range(numeroMinimo, numeroMaximo + 1);
+                numero2 = Random.Range(numeroMinimo, numeroMaximo + 1);
+                if (numero1 < numero2)
+                {
+                    int tmp = numero1;
+                    numero1 = numero2;
+                    numero2 = tmp;
+                }
+                respostaCerta = numero1 - numero2;
+                sinal = "-";
+                break;
+
+            case 2: // Multiplicação
+                numero1 = Random.Range(2, Mathf.Min(numeroMaximo, 10));
+                numero2 = Random.Range(2, Mathf.Min(numeroMaximo, 10));
+                respostaCerta = numero1 * numero2;
+                sinal = "×";
+                break;
+        }
+
+        string expressao = $"{numero1} {sinal} {numero2} = ?";
+
+        if (telaDaConta != null)
+        {
+            telaDaConta.text = expressao;
+        }
+
+        if (VRWorldSpaceUI.Instance != null)
+        {
+            VRWorldSpaceUI.Instance.UpdateMathQuestion(expressao);
+        }
+
         CriarLixos();
     }
 
-    void CriarLixos()
+    private void CriarLixos()
     {
-        // Escolhe qual lixo vai ter a resposta certa (0, 1 ou 2)
-        int lixoPremiado = Random.Range(0, lugaresParaNascer.Length);
+        if (lugaresParaNascer == null || lugaresParaNascer.Length == 0 || lixoMolde == null) return;
 
-        // Para cada lugar de nascimento que você configurar, ele cria um lixo
+        int lixoPremiado = Random.Range(0, lugaresParaNascer.Length);
+        List<int> opcoesErradas = new List<int>();
+
         for (int i = 0; i < lugaresParaNascer.Length; i++)
         {
-            // Cria um clone do lixo
+            if (lugaresParaNascer[i] == null) continue;
+
             GameObject novoLixo = Instantiate(lixoMolde, lugaresParaNascer[i].position, Quaternion.identity);
+            lixosAtivos.Add(novoLixo);
 
-            // Pega o script do lixo para passarmos o número
-            LixoEspacial scriptDoLixo = novoLixo.GetComponent<LixoEspacial>();
-
+            int valorParaLixo;
             if (i == lixoPremiado)
             {
-                // Se for o escolhido, dá a resposta certa
-                scriptDoLixo.ConfigurarLixo(respostaCerta);
+                valorParaLixo = respostaCerta;
             }
             else
             {
-                // Se não, inventa um número errado (soma + 2, ou -1, etc)
-                // Para não complicar, vamos só sortear um número aleatório diferente
-                int numeroErrado = Random.Range(1, 15);
-                if (numeroErrado == respostaCerta) numeroErrado += 1; // Garante que não é igual a resposta certa
+                int candidato = respostaCerta + 1;
+                int attempts = 0;
+                do
+                {
+                    attempts++;
+                    int offset = Random.Range(-10, 11);
+                    if (offset == 0) offset = Random.Range(0, 2) == 0 ? 1 : -1;
+                    candidato = respostaCerta + offset;
+                    if (candidato < 0) candidato = Mathf.Abs(candidato) + 1;
+                } while ((candidato == respostaCerta || opcoesErradas.Contains(candidato)) && attempts < 50);
 
-                scriptDoLixo.ConfigurarLixo(numeroErrado);
+                if (candidato == respostaCerta || opcoesErradas.Contains(candidato))
+                {
+                    candidato = respostaCerta + opcoesErradas.Count + 3;
+                }
+
+                opcoesErradas.Add(candidato);
+                valorParaLixo = candidato;
+            }
+
+            LixoEspacial scriptLixo = novoLixo.GetComponent<LixoEspacial>();
+            if (scriptLixo != null)
+            {
+                scriptLixo.ConfigurarLixo(valorParaLixo);
+            }
+
+            Debris deb = novoLixo.GetComponent<Debris>();
+            if (deb != null)
+            {
+                deb.Init(valorParaLixo, DefenseManager.Instance);
             }
         }
     }
 
-    // A arma vai avisar o gerente quando acertar um alvo
     public void TestarAcerto(int numeroAtingido, GameObject lixoDestruido)
     {
+        if (aguardandoProximaRodada) return;
+
         if (numeroAtingido == respostaCerta)
         {
-            Debug.Log("ACERTOU MIZERAVI!");
-            Destroy(lixoDestruido); // Destrói o lixo
-            CriarNovaConta(); // Gera uma nova rodada
+            // === ACERTO ===
+            aguardandoProximaRodada = true;
+            Debug.Log("[GerenteMatematica] ACERTOU!");
+
+            if (ScoreManager.Instance != null) ScoreManager.Instance.AddCorrectHit();
+            if (SoundEffectsManager.Instance != null) SoundEffectsManager.Instance.PlayCorrect();
+            if (VRWorldSpaceUI.Instance != null) VRWorldSpaceUI.Instance.ShowFeedback(true, "CORRETO!\n+100 PONTOS");
+
+            lixosAtivos.Remove(lixoDestruido);
+            Destroy(lixoDestruido);
+
+            StartCoroutine(NovaRodadaRoutine());
         }
         else
         {
-            Debug.Log("ERROU! Perdeu vida!");
-            Destroy(lixoDestruido); // Destrói o lixo errado também
+            // === ERRO ===
+            Debug.Log("[GerenteMatematica] ERROU!");
+
+            if (ScoreManager.Instance != null) ScoreManager.Instance.AddWrongHit();
+            if (SoundEffectsManager.Instance != null) SoundEffectsManager.Instance.PlayError();
+            if (VRWorldSpaceUI.Instance != null) VRWorldSpaceUI.Instance.ShowFeedback(false, "ERRADO!\n-20 ENERGIA");
+
+            lixosAtivos.Remove(lixoDestruido);
+            Destroy(lixoDestruido);
         }
+    }
+
+    private IEnumerator NovaRodadaRoutine()
+    {
+        yield return new WaitForSeconds(0.4f);
+        LimparLixos();
+        yield return new WaitForSeconds(1.1f);
+        CriarNovaConta();
+    }
+
+    private void LimparLixos()
+    {
+        foreach (var lixo in lixosAtivos)
+        {
+            if (lixo != null) Destroy(lixo);
+        }
+        lixosAtivos.Clear();
     }
 }

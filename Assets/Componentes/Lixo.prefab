@@ -26,18 +26,18 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3427435008263254177}
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 1.76088}
-  m_LocalScale: {x: 0.5, y: 0.5, z: 0.5}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: -1.35, z: 0}
+  m_LocalScale: {x: 0.01, y: 0.01, z: 0.01}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 5312977291905919640}
   m_Father: {fileID: 7320838122937881390}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 257.04404, y: 294.975}
-  m_SizeDelta: {x: 452.5, y: 597.25}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 140, y: 75}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!223 &938417433871242582
 Canvas:
@@ -195,15 +195,15 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 36
-  m_fontSizeBase: 36
-  m_fontWeight: 400
+  m_fontSize: 56
+  m_fontSizeBase: 56
+  m_fontWeight: 700
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
   m_fontSizeMax: 72
-  m_fontStyle: 0
-  m_HorizontalAlignment: 1
-  m_VerticalAlignment: 256
+  m_fontStyle: 1
+  m_HorizontalAlignment: 2
+  m_VerticalAlignment: 512
   m_textAlignment: 65535
   m_characterSpacing: 0
   m_characterHorizontalScale: 1
@@ -254,6 +254,7 @@ GameObject:
   - component: {fileID: 7771074353659067282}
   - component: {fileID: 5258814555399485721}
   - component: {fileID: 7096108765229151525}
+  - component: {fileID: 7096108765229151526}
   m_Layer: 0
   m_Name: Lixo
   m_TagString: Untagged
@@ -353,8 +354,8 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 1, y: 1, z: 1}
-  m_Center: {x: 0, y: 0, z: 0}
+  m_Size: {x: 1.6, y: 2.45, z: 1.6}
+  m_Center: {x: 0, y: -0.67, z: 0}
 --- !u!54 &5258814555399485721
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -397,3 +398,22 @@ MonoBehaviour:
   textoDoNumero: {fileID: 3126062021666324230}
   velocidade: 2
   valorDesteLixo: 0
+--- !u!114 &7096108765229151526
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6098772593632162471}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6bacb8c473e874347973b98beb43b24c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Debris
+  textoDoNumero: {fileID: 3126062021666324230}
+  meshRenderer: {fileID: 84909497467669332}
+  floatSpeed: 1
+  floatAmplitude: 0.35
+  rotationSpeed: 25
+  billboardText: 1
+
