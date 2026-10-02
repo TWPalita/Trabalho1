@@ -6,7 +6,7 @@ using Unity.XR.CoreUtils;
 /// Controla o botão de teleporte para a área de defesa/matemática.
 /// Compatível com as chamadas de evento existentes do Push Button no projeto.
 /// </summary>
-public class TeleportButton : MonoBehaviour
+public class BotaoTeleporte : MonoBehaviour
 {
     [Tooltip("Nome da cena de destino")]
     public string cenaDestino = "DefenseScene";
@@ -14,27 +14,27 @@ public class TeleportButton : MonoBehaviour
 
     public void Teleportar()
     {
-        Debug.Log("[TeleportButton] Acionando transição para a DefenseScene...");
+        Debug.Log("[BotaoTeleporte] Acionando transição para a DefenseScene...");
 
         // 1. Toca som de ativação do painel
-        if (SoundEffectsManager.Instance != null)
+        if (GerenteSom.Instance != null)
         {
-            SoundEffectsManager.Instance.PlayClick();
-            SoundEffectsManager.Instance.StopAlarm();
+            GerenteSom.Instance.PlayClick();
+            GerenteSom.Instance.StopAlarm();
         }
 
         // 2. Para o alarme da nave
-        if (AlarmManager.Instance != null)
+        if (GerenteAlarme.Instance != null)
         {
-            AlarmManager.Instance.StopAlarm();
+            GerenteAlarme.Instance.StopAlarm();
         }
 
         // 3. Transição direta para a cena DefenseScene
         if (!string.IsNullOrEmpty(cenaDestino))
         {
-            if (SceneFader.Instance != null)
+            if (TransicaoTela.Instance != null)
             {
-                SceneFader.Instance.FadeOut(0.4f, () =>
+                TransicaoTela.Instance.FadeOut(0.4f, () =>
                 {
                     SceneManager.LoadScene(cenaDestino);
                 });
@@ -50,16 +50,16 @@ public class TeleportButton : MonoBehaviour
         XROrigin xrOrigin = FindAnyObjectByType<XROrigin>();
         if (xrOrigin == null || destino == null)
         {
-            Debug.LogError("[TeleportButton] XR Origin ou destino não encontrado!");
+            Debug.LogError("[BotaoTeleporte] XR Origin ou destino não encontrado!");
             return;
         }
 
-        if (SceneFader.Instance != null)
+        if (TransicaoTela.Instance != null)
         {
-            SceneFader.Instance.FadeOut(0.4f, () =>
+            TransicaoTela.Instance.FadeOut(0.4f, () =>
             {
                 ExecutarMovimento(xrOrigin);
-                SceneFader.Instance.FadeIn(0.4f, () =>
+                TransicaoTela.Instance.FadeIn(0.4f, () =>
                 {
                     AtivarFaseDefesa();
                 });
@@ -95,13 +95,12 @@ public class TeleportButton : MonoBehaviour
 
     private void AtivarFaseDefesa()
     {
-        if (GerenteMatematica.Instance != null)
+        if (GerenteDefesa.Instance != null)
         {
-            GerenteMatematica.Instance.CriarNovaConta();
-        }
-        if (DefenseManager.Instance != null)
-        {
-            DefenseManager.Instance.StartDefense();
+            GerenteDefesa.Instance.StartDefense();
         }
     }
 }
+
+public class TeleportButton : BotaoTeleporte { }
+
