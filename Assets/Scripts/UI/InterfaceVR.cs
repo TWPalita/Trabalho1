@@ -59,7 +59,9 @@ public class InterfaceVR : MonoBehaviour
             btnConsoleReturnShip.onClick.AddListener(() =>
             {
                 if (GerenteSom.Instance != null) GerenteSom.Instance.PlayClick();
-                if (GerenteDefesa.Instance != null) GerenteDefesa.Instance.ReturnToShip();
+                GerenteDefesa def = GerenteDefesa.Instance != null ? GerenteDefesa.Instance : FindAnyObjectByType<GerenteDefesa>();
+                if (def != null) def.ReturnToShip();
+                else UnityEngine.SceneManagement.SceneManager.LoadScene("SampleScene");
             });
         }
 
@@ -67,7 +69,9 @@ public class InterfaceVR : MonoBehaviour
         {
             btnRestart.onClick.AddListener(() =>
             {
-                if (GerenteDefesa.Instance != null) GerenteDefesa.Instance.RestartDefense();
+                if (GerenteSom.Instance != null) GerenteSom.Instance.PlayClick();
+                GerenteDefesa def = GerenteDefesa.Instance != null ? GerenteDefesa.Instance : FindAnyObjectByType<GerenteDefesa>();
+                if (def != null) def.RestartDefense();
             });
         }
 
@@ -75,7 +79,10 @@ public class InterfaceVR : MonoBehaviour
         {
             btnReturnToShip.onClick.AddListener(() =>
             {
-                if (GerenteDefesa.Instance != null) GerenteDefesa.Instance.ReturnToShip();
+                if (GerenteSom.Instance != null) GerenteSom.Instance.PlayClick();
+                GerenteDefesa def = GerenteDefesa.Instance != null ? GerenteDefesa.Instance : FindAnyObjectByType<GerenteDefesa>();
+                if (def != null) def.ReturnToShip();
+                else UnityEngine.SceneManagement.SceneManager.LoadScene("SampleScene");
             });
         }
 
@@ -189,12 +196,10 @@ public class InterfaceVR : MonoBehaviour
         {
             if (gameOverScoreText != null)
             {
-                gameOverScoreText.text = $"DEFESA ENCERRADA\n\n" +
-                                         $"PONTUAÇÃO: {finalScore}\n\n" +
-                                         $"ACERTOS: {correct}\n" +
-                                         $"ERROS: {wrong}\n" +
-                                         $"PRECISÃO: {accuracy:F0}%\n" +
-                                         $"RODADAS: {rounds}";
+                gameOverScoreText.text =
+                    $"<color=#FF5555><b>ENERGIA DA NAVE ESGOTADA!</b></color>\n\n" +
+                    $"Pontuação: <b>{finalScore}</b>  |  Acertos: <b>{correct}</b>  |  Erros: <b>{wrong}</b>\n\n" +
+                    $"Deseja <b>recomeçar a defesa</b> ou <b>voltar para a nave</b>?";
             }
             gameOverPanel.SetActive(true);
         }

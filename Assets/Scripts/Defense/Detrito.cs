@@ -17,10 +17,13 @@ public class Detrito : MonoBehaviour
     [SerializeField] private TMP_Text textoDoNumero;
     [SerializeField] private Transform labelContainer;
     [SerializeField] private Image badgeBackground;
+    [SerializeField] private Image badgeBorder;
+    [SerializeField] private bool showNumberLabel = false;
 
     [Header("Componentes")]
     [SerializeField] private Renderer meshRenderer;
     [SerializeField] private XRSimpleInteractable xrInteractable;
+    [SerializeField] private DebrisMovement debrisMovement;
 
     [Header("Comportamento Espacial")]
     [SerializeField] private float floatSpeed = 1.0f;
@@ -29,10 +32,12 @@ public class Detrito : MonoBehaviour
     [SerializeField] private bool billboardText = true;
 
     [Header("Cores e Destaque VR")]
-    [SerializeField] private Color normalTextColor = Color.white;
-    [SerializeField] private Color hoverTextColor = new Color(0.2f, 1f, 0.95f, 1f);
-    [SerializeField] private Color badgeNormalColor = new Color(0.04f, 0.08f, 0.16f, 0.85f);
-    [SerializeField] private Color badgeHoverColor = new Color(0.1f, 0.45f, 0.65f, 0.95f);
+    [SerializeField] private Color normalTextColor = new Color(0.9f, 0.98f, 1f, 1f);
+    [SerializeField] private Color hoverTextColor = new Color(0.3f, 1f, 0.95f, 1f);
+    [SerializeField] private Color badgeNormalColor = new Color(0.02f, 0.05f, 0.12f, 0.9f);
+    [SerializeField] private Color badgeHoverColor = new Color(0.08f, 0.35f, 0.6f, 0.95f);
+    [SerializeField] private Color borderNormalColor = new Color(0.18f, 0.72f, 0.95f, 0.75f);
+    [SerializeField] private Color borderHoverColor = new Color(0.35f, 1f, 0.95f, 1f);
     [SerializeField] private Color hoverHighlightColor = new Color(0.3f, 1f, 0.9f, 1f);
 
     public int Number { get; private set; }
@@ -40,6 +45,11 @@ public class Detrito : MonoBehaviour
     public bool IsHit { get; private set; } = false;
 
     public void MarkHit() => IsHit = true;
+    public void SetShowNumberLabel(bool show)
+    {
+        showNumberLabel = show;
+        if (labelContainer != null) labelContainer.gameObject.SetActive(show);
+    }
 
     private Vector3 initialPosition;
     private float timeOffset;
@@ -49,6 +59,7 @@ public class Detrito : MonoBehaviour
 
     private void Awake()
     {
+        if (debrisMovement == null) debrisMovement = GetComponent<DebrisMovement>();
         if (meshRenderer == null) meshRenderer = GetComponentInChildren<Renderer>();
         if (xrInteractable == null)
         {
@@ -100,13 +111,34 @@ public class Detrito : MonoBehaviour
             canvasRT.localPosition = new Vector3(0f, -numberYOffset, 0f);
         }
 
-        // 2. Fundo/Placa escura de alto contraste para destacar contra estrelas e espaço
+        // 2. Moldura e Fundo tático de mira (HUD de transponder espacial)
+        Transform borderTransform = canvas.transform.Find("BadgeBorder");
+        if (borderTransform == null)
+        {
+            GameObject borderObj = new GameObject("BadgeBorder");
+            borderObj.transform.SetParent(canvas.transform, false);
+            borderObj.transform.SetAsFirstSibling();
+            badgeBorder = borderObj.AddComponent<Image>();
+            badgeBorder.color = borderNormalColor;
+
+            RectTransform borderRT = borderObj.GetComponent<RectTransform>();
+            borderRT.anchorMin = Vector2.zero;
+            borderRT.anchorMax = Vector2.one;
+            borderRT.sizeDelta = new Vector2(8f, 8f);
+            borderRT.anchoredPosition = Vector2.zero;
+        }
+        else
+        {
+            badgeBorder = borderTransform.GetComponent<Image>();
+            if (badgeBorder != null) badgeBorder.color = borderNormalColor;
+        }
+
         Transform bgTransform = canvas.transform.Find("BadgeBackground");
         if (bgTransform == null)
         {
             GameObject badge = new GameObject("BadgeBackground");
             badge.transform.SetParent(canvas.transform, false);
-            badge.transform.SetAsFirstSibling();
+            badge.transform.SetSiblingIndex(1);
             badgeBackground = badge.AddComponent<Image>();
             badgeBackground.color = badgeNormalColor;
 
@@ -143,6 +175,11 @@ public class Detrito : MonoBehaviour
                 textRT.sizeDelta = Vector2.zero;
                 textRT.anchoredPosition = Vector2.zero;
             }
+        }
+
+        if (labelContainer != null)
+        {
+            labelContainer.gameObject.SetActive(showNumberLabel);
         }
     }
 
@@ -183,6 +220,9 @@ public class Detrito : MonoBehaviour
 
     private void Update()
     {
+        // Se possui DebrisMovement ativo, o movimento espacial em direção à nave é controlado por ele
+        if (debrisMovement != null) return;
+
         // Flutuação espacial do objeto (sobe e desce em seno)
         float yOffset = Mathf.Sin((Time.time + timeOffset) * floatSpeed) * floatAmplitude;
         transform.position = initialPosition + new Vector3(0f, yOffset, 0f);
@@ -193,6 +233,8 @@ public class Detrito : MonoBehaviour
 
     private void LateUpdate()
     {
+        if (!showNumberLabel) return;
+
         // Garante que o número fique fixado diretamente abaixo do objeto,
         // flutuando junto com ele mas sem girar em órbita quando o detrito roda.
         if (labelContainer != null)
@@ -235,15 +277,38 @@ public class Detrito : MonoBehaviour
         TriggerHit();
     }
 
+    private Coroutine errorFlashRoutine;
+
     private void TriggerHit()
     {
         if (IsHit) return;
-        IsHit = true;
 
         if (manager != null)
         {
             manager.OnDebrisHit(this);
         }
+    }
+
+    /// <summary>
+    /// Feedback visual rápido (vermelho) para tiro em resposta incorreta sem destruir o detrito
+    /// </summary>
+    public void FlashError()
+    {
+        if (errorFlashRoutine != null) StopCoroutine(errorFlashRoutine);
+        errorFlashRoutine = StartCoroutine(ErrorFlashRoutine());
+    }
+
+    private System.Collections.IEnumerator ErrorFlashRoutine()
+    {
+        if (badgeBorder != null) badgeBorder.color = new Color(1f, 0.2f, 0.2f, 1f);
+        if (badgeBackground != null) badgeBackground.color = new Color(0.85f, 0.1f, 0.1f, 0.95f);
+        if (textoDoNumero != null) textoDoNumero.color = new Color(1f, 0.3f, 0.3f, 1f);
+
+        yield return new WaitForSeconds(0.45f);
+
+        if (badgeBorder != null) badgeBorder.color = borderNormalColor;
+        if (badgeBackground != null) badgeBackground.color = badgeNormalColor;
+        if (textoDoNumero != null) textoDoNumero.color = normalTextColor;
     }
 
     public void SetHighlight(bool highlighted)
@@ -266,15 +331,36 @@ public class Detrito : MonoBehaviour
             textoDoNumero.color = highlighted ? hoverTextColor : normalTextColor;
         }
 
+        if (badgeBorder != null)
+        {
+            badgeBorder.color = highlighted ? borderHoverColor : borderNormalColor;
+        }
+
         if (badgeBackground != null)
         {
             badgeBackground.color = highlighted ? badgeHoverColor : badgeNormalColor;
         }
     }
 
-    public void Explode(bool isCorrect)
+    public void Explode(bool isCorrect = true)
     {
         IsHit = true;
+        StartCoroutine(HitFeedbackAndDestroyRoutine());
+    }
+
+    private System.Collections.IEnumerator HitFeedbackAndDestroyRoutine()
+    {
+        SetHighlight(true);
+        if (targetMaterial != null)
+        {
+            targetMaterial.color = Color.white;
+            if (targetMaterial.HasProperty("_EmissionColor"))
+            {
+                targetMaterial.SetColor("_EmissionColor", Color.white * 2.0f);
+                targetMaterial.EnableKeyword("_EMISSION");
+            }
+        }
+        yield return new WaitForSeconds(0.1f);
         Destroy(gameObject);
     }
 }

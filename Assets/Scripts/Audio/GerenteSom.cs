@@ -14,6 +14,7 @@ public class GerenteSom : MonoBehaviour
     [SerializeField] private AudioClip correctClip;
     [SerializeField] private AudioClip errorClip;
     [SerializeField] private AudioClip clickClip;
+    [SerializeField] private AudioClip hitClip;
 
     private AudioSource audioSource;
     private AudioSource alarmSource;
@@ -23,6 +24,7 @@ public class GerenteSom : MonoBehaviour
     private AudioClip cachedCorrectClip;
     private AudioClip cachedErrorClip;
     private AudioClip cachedSirenClip;
+    private AudioClip cachedHitClip;
 
     private void Awake()
     {
@@ -49,6 +51,12 @@ public class GerenteSom : MonoBehaviour
         cachedCorrectClip = CreateProceduralCorrect();
         cachedErrorClip = CreateProceduralError();
         cachedSirenClip = CreateSirenClip();
+        cachedHitClip = CreateProceduralHit();
+    }
+
+    public void PlayHit()
+    {
+        audioSource.PlayOneShot(hitClip != null ? hitClip : cachedHitClip);
     }
 
     public void PlayClick()
@@ -190,6 +198,28 @@ public class GerenteSom : MonoBehaviour
         }
 
         AudioClip clip = AudioClip.Create("Siren", sampleCount, 1, sampleRate, false);
+        clip.SetData(samples, 0);
+        return clip;
+    }
+
+    private AudioClip CreateProceduralHit()
+    {
+        int sampleRate = 44100;
+        float duration = 0.28f;
+        int sampleCount = Mathf.CeilToInt(sampleRate * duration);
+        float[] samples = new float[sampleCount];
+
+        for (int i = 0; i < sampleCount; i++)
+        {
+            float t = (float)i / sampleRate;
+            float freq = Mathf.Lerp(220f, 45f, t / duration);
+            float envelope = Mathf.Exp(-7f * (t / duration));
+            float noise = (Random.value * 2f - 1f) * 0.4f * envelope;
+            float tone = Mathf.Sin(2f * Mathf.PI * freq * t) * 0.6f * envelope;
+            samples[i] = Mathf.Clamp(tone + noise, -1f, 1f) * 0.7f;
+        }
+
+        AudioClip clip = AudioClip.Create("HitImpact", sampleCount, 1, sampleRate, false);
         clip.SetData(samples, 0);
         return clip;
     }

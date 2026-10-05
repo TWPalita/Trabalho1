@@ -392,12 +392,20 @@ MonoBehaviour:
   m_GameObject: {fileID: 6098772593632162471}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2cb4bee811420844791649e43e80e67e, type: 3}
+  m_Script: {fileID: 11500000, guid: 9c4d1b92cc0130340bae423e461260c8, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: '::'
-  textoDoNumero: {fileID: 3126062021666324230}
-  velocidade: 2
-  valorDesteLixo: 0
+  m_EditorClassIdentifier: Assembly-CSharp::DebrisMovement
+  speed: 1
+  rotationSpeed: 20
+  target: {fileID: 0}
+  movementDirection: {x: 0, y: 0, z: -1}
+  addNaturalVariation: 1
+  speedVariationRange: 0.3
+  lateralWobbleAmplitude: 0.25
+  lateralWobbleFrequency: 0.8
+  minDistanceToReset: 3.8
+  initialSpawnPosition: {x: 0, y: 0, z: 0}
+  autoStoreInitialPosition: 1
 --- !u!114 &7096108765229151526
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -411,7 +419,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Debris
   textoDoNumero: {fileID: 3126062021666324230}
+  showNumberLabel: 1
   meshRenderer: {fileID: 84909497467669332}
+  debrisMovement: {fileID: 7096108765229151525}
   floatSpeed: 1
   floatAmplitude: 0.35
   rotationSpeed: 25

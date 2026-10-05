@@ -68,47 +68,35 @@ public class GeradorMatematica : MonoBehaviour
 
         if (operationType == MathOperationType.Mixed)
         {
+            // Operações prioritárias nesta etapa: adição, subtração e multiplicação (sem divisão)
+            int r = Random.Range(0, 3);
+            selectedOp = r switch
+            {
+                0 => MathOperationType.Addition,
+                1 => MathOperationType.Subtraction,
+                _ => MathOperationType.Multiplication
+            };
+
             if (round <= 3)
             {
-                // Rodadas 1-3: Adição, subtração e multiplicação simples (números menores)
                 curMin = 1;
                 curMax = 8;
-                int r = Random.Range(0, 3);
-                selectedOp = r switch
-                {
-                    0 => MathOperationType.Addition,
-                    1 => MathOperationType.Subtraction,
-                    _ => MathOperationType.Multiplication
-                };
             }
             else if (round <= 6)
             {
-                // Rodadas 4-6: Adição, subtração, multiplicação e divisão inteira
                 curMin = 2;
                 curMax = 12;
-                int r = Random.Range(0, 4);
-                selectedOp = r switch
-                {
-                    0 => MathOperationType.Addition,
-                    1 => MathOperationType.Subtraction,
-                    2 => MathOperationType.Multiplication,
-                    _ => MathOperationType.Division
-                };
             }
             else
             {
-                // Rodadas 7+: Maior variedade com operandos maiores
                 curMin = 2;
                 curMax = 15;
-                int r = Random.Range(0, 4);
-                selectedOp = r switch
-                {
-                    0 => MathOperationType.Addition,
-                    1 => MathOperationType.Subtraction,
-                    2 => MathOperationType.Multiplication,
-                    _ => MathOperationType.Division
-                };
             }
+        }
+        else if (selectedOp == MathOperationType.Division)
+        {
+            // Fallback preventivo caso a operação esteja explicitamente configurada como Divisão
+            selectedOp = MathOperationType.Addition;
         }
 
         int numA = 0;

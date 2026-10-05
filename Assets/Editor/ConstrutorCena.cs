@@ -28,7 +28,8 @@ public static class ConstrutorCena
 
     static ConstrutorCena()
     {
-        EditorApplication.delayCall += CheckAndAutoBuild;
+        // Desativado auto-build automático ao iniciar para preservar as cenas configuradas
+        // EditorApplication.delayCall += CheckAndAutoBuild;
     }
 
     private static void CheckAndAutoBuild()
@@ -54,25 +55,23 @@ public static class ConstrutorCena
             Debug.LogError($"Fonte TMP não encontrada em: {FontPath}");
         }
 
-        BuildNaveSceneVR(font);
         BuildDefenseSceneVR(font);
         ConfigureBuildSettings();
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        Debug.Log(">>> [SceneBuilder] Todas as cenas VR foram geradas e configuradas com sucesso!");
+        Debug.Log(">>> [SceneBuilder] Cenas VR configuradas com sucesso!");
     }
 
     public static void ConfigureBuildSettings()
     {
         List<EditorBuildSettingsScene> scenes = new List<EditorBuildSettingsScene>
         {
-            new EditorBuildSettingsScene("Assets/Scenes/NaveScene.unity", true),
             new EditorBuildSettingsScene("Assets/Scenes/DefenseScene.unity", true),
             new EditorBuildSettingsScene("Assets/Scenes/SampleScene.unity", true)
         };
         EditorBuildSettings.scenes = scenes.ToArray();
-        Debug.Log("[SceneBuilder] EditorBuildSettings configurado com NaveScene (0), DefenseScene (1) e SampleScene (2).");
+        Debug.Log("[SceneBuilder] EditorBuildSettings configurado com DefenseScene (0) e SampleScene (1).");
     }
 
     private static void BuildNaveSceneVR(TMP_FontAsset font)
@@ -486,12 +485,12 @@ public static class ConstrutorCena
         feedbackText.gameObject.SetActive(false);
 
         // --- BOTÕES FÍSICOS DO PAINEL DE CONTROLE (🔘 🔘) ---
-        // Botão Esquerdo 🔘: "NOVA CONTA"
-        Button btnConsoleNew = CreateWorldSpaceButton(consolePanel.transform, "BotaoNovaRodada", "🔘 NOVA CONTA",
+        // Botão Esquerdo: "NOVA RODADA"
+        Button btnConsoleNew = CreateWorldSpaceButton(consolePanel.transform, "BotaoNovaRodada", "NOVA RODADA",
             new Vector2(-160f, -95f), new Vector2(240f, 52f), font);
 
-        // Botão Direito 🔘: "RETORNAR À NAVE"
-        Button btnConsoleReturn = CreateWorldSpaceButton(consolePanel.transform, "BotaoRetornarNave", "🔘 RETORNAR",
+        // Botão Direito: "RETORNAR À NAVE"
+        Button btnConsoleReturn = CreateWorldSpaceButton(consolePanel.transform, "BotaoRetornarNave", "RETORNAR",
             new Vector2(160f, -95f), new Vector2(240f, 52f), font);
 
         // ========================================================

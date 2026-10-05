@@ -19,6 +19,10 @@ public class GerenteDefesa : MonoBehaviour
     [SerializeField] private GameObject debrisPrefab;
     [SerializeField] private Transform[] spawnPoints;
 
+    [Header("Modo de Jogo")]
+    [Tooltip("Se falso, executa o modo base de defesa e tiro ao alvo (sem matemática, sem pontuação punitiva)")]
+    [SerializeField] private bool enableMath = true;
+
     [Header("Configurações das Rodadas")]
     [SerializeField] private float delayBetweenRounds = 1.5f;
     [SerializeField] private Transform shipExplorationSpawn;
@@ -29,6 +33,7 @@ public class GerenteDefesa : MonoBehaviour
     private MathProblem currentProblem;
     private int currentRound = 1;
     private bool isRoundTransitioning = false;
+    private bool roundResolved = false;
     private bool isDefenseActive = false;
 
     private void Awake()
@@ -51,6 +56,18 @@ public class GerenteDefesa : MonoBehaviour
         if (autoStartOnAwake)
         {
             StartDefense();
+        }
+    }
+
+    private void Update()
+    {
+        if (UnityEngine.InputSystem.Keyboard.current != null)
+        {
+            if (UnityEngine.InputSystem.Keyboard.current.rKey.wasPressedThisFrame ||
+                UnityEngine.InputSystem.Keyboard.current.escapeKey.wasPressedThisFrame)
+            {
+                ReturnToShip();
+            }
         }
     }
 
@@ -83,29 +100,81 @@ public class GerenteDefesa : MonoBehaviour
 
     public void StartNewRound()
     {
-        if (mathManager == null || !isDefenseActive) return;
+        if (!isDefenseActive) return;
         isRoundTransitioning = false;
+        roundResolved = false;
 
         ClearAllDebris();
 
-        // 1. Gera novo problema matemático com base na progressão da rodada
-        currentProblem = mathManager.GenerateNewProblem(currentRound);
-
-        // 2. Atualiza UI World Space no Cockpit
-        if (InterfaceVR.Instance != null)
+        if (enableMath && mathManager != null)
         {
-            InterfaceVR.Instance.UpdateMathQuestion(currentProblem.QuestionText);
-            InterfaceVR.Instance.UpdateRound(currentRound);
-        }
+            // 1. Gera novo problema matemático com base na progressão da rodada
+            currentProblem = mathManager.GenerateNewProblem(currentRound);
 
-        // 3. Spawna os objetos espaciais com as opções de resposta no campo de visão
-        SpawnDebris(currentProblem.Options);
+            // 2. Atualiza UI World Space no Cockpit
+            if (InterfaceVR.Instance != null)
+            {
+                InterfaceVR.Instance.UpdateMathQuestion(currentProblem.QuestionText);
+                InterfaceVR.Instance.UpdateRound(currentRound);
+            }
+
+            // 3. Spawna os objetos espaciais com as opções de resposta no campo de visão
+            SpawnDebris(currentProblem.Options);
+        }
+        else
+        {
+            // === MODO BASE DE DEFESA (SEM MATEMÁTICA) ===
+            // 5 detritos no espaço em movimento em direção à nave
+            if (InterfaceVR.Instance != null)
+            {
+                InterfaceVR.Instance.UpdateMathQuestion("DEFESA DO COCKPIT\nATINJA OS DETRITOS");
+                InterfaceVR.Instance.UpdateRound(1);
+            }
+
+            SpawnAllDebrisBase();
+        }
 
         ArmaVR.SetAllCanShoot(true);
         if (weaponController != null)
         {
             weaponController.SetCanShoot(true);
         }
+    }
+
+    private void SpawnAllDebrisBase()
+    {
+        if (debrisPrefab == null || spawnPoints == null || spawnPoints.Length == 0)
+        {
+            Debug.LogError("[GerenteDefesa] Prefab de detrito ou pontos de spawn não configurados!");
+            return;
+        }
+
+        for (int i = 0; i < spawnPoints.Length; i++)
+        {
+            if (spawnPoints[i] == null) continue;
+            SpawnSingleDebris(i);
+        }
+    }
+
+    private void SpawnSingleDebris(int spawnIndex)
+    {
+        if (spawnIndex < 0 || spawnIndex >= spawnPoints.Length || spawnPoints[spawnIndex] == null) return;
+
+        GameObject obj = Instantiate(debrisPrefab, spawnPoints[spawnIndex].position, spawnPoints[spawnIndex].rotation);
+        obj.name = $"Detrito_{spawnIndex + 1}";
+
+        Detrito deb = obj.GetComponent<Detrito>();
+        if (deb != null)
+        {
+            deb.Init(0, this);
+            deb.SetShowNumberLabel(false);
+            activeDebris.Add(deb);
+        }
+
+        // Garante que o DebrisMovement esteja presente e inicializado no ponto de spawn
+        DebrisMovement mov = obj.GetComponent<DebrisMovement>();
+        if (mov == null) mov = obj.AddComponent<DebrisMovement>();
+        mov.SetSpawnPoint(spawnPoints[spawnIndex].position, spawnIndex);
     }
 
     private void SpawnDebris(int[] options)
@@ -125,20 +194,61 @@ public class GerenteDefesa : MonoBehaviour
             if (deb != null)
             {
                 deb.Init(options[i], this);
+                deb.SetShowNumberLabel(true);
                 activeDebris.Add(deb);
             }
+
+            DebrisMovement mov = obj.GetComponent<DebrisMovement>();
+            if (mov == null) mov = obj.AddComponent<DebrisMovement>();
+            mov.SetSpawnPoint(spawnPoints[i].position, i);
         }
     }
 
     public void OnDebrisHit(Detrito hitDebris)
     {
-        if (isRoundTransitioning || hitDebris == null || !isDefenseActive || hitDebris.IsHit) return;
-        hitDebris.MarkHit();
+        if (hitDebris == null || !isDefenseActive || hitDebris.IsHit) return;
+
+        if (!enableMath)
+        {
+            // === MODO BASE: IMPACTO E DESTRUIÇÃO/FEEDBACK IMEDIATO ===
+            hitDebris.MarkHit();
+
+            // 1. Áudio de impacto
+            if (GerenteSom.Instance != null)
+            {
+                GerenteSom.Instance.PlayHit();
+            }
+
+            // 2. Vibração tátil no controlador VR
+            ArmaVR.TriggerAllHaptics(0.8f, 0.18f);
+
+            // 3. Feedback visual no HUD do Cockpit
+            if (InterfaceVR.Instance != null)
+            {
+                InterfaceVR.Instance.ShowFeedback(true, "DETRITO ELIMINADO!");
+            }
+
+            // 4. Identifica ponto de spawn original mais próximo para respawn
+            int spIndex = FindClosestSpawnIndex(hitDebris.transform.position);
+
+            activeDebris.Remove(hitDebris);
+            hitDebris.Explode(true);
+
+            // 5. Respawn automático após intervalo para manter continuamente alvos no espaço
+            StartCoroutine(RespawnSingleDebrisRoutine(spIndex, 1.8f));
+            return;
+        }
+
+        // === MODO COM MATEMÁTICA ===
+        if (roundResolved || isRoundTransitioning) return;
 
         if (hitDebris.Number == currentProblem.CorrectAnswer)
         {
-            // === ACERTO ===
+            // === ACERTO CORRETO ===
+            roundResolved = true;
             isRoundTransitioning = true;
+            hitDebris.MarkHit();
+
             ArmaVR.SetAllCanShoot(false);
             if (weaponController != null) weaponController.SetCanShoot(false);
 
@@ -159,20 +269,56 @@ public class GerenteDefesa : MonoBehaviour
         }
         else
         {
-            // === ERRO ===
-            ArmaVR.TriggerAllHaptics(1.0f, 0.35f);
+            // === RESPOSTA INCORRETA ===
+            // Subtrai energia/vida e pontos. NÃO explode o detrito, NÃO avança a rodada.
+            ArmaVR.TriggerAllHaptics(0.6f, 0.25f);
 
             if (scoreManager != null) scoreManager.AddWrongHit();
+
+            // Se a perda de vida causou Game Over, o painel de fim de jogo já foi acionado e os detritos limpos
+            if (scoreManager != null && scoreManager.IsGameOver)
+            {
+                return;
+            }
+
             if (GerenteSom.Instance != null) GerenteSom.Instance.PlayError();
 
             if (InterfaceVR.Instance != null)
             {
-                InterfaceVR.Instance.ShowFeedback(false, "ERRADO!\n-20 ENERGIA");
+                int currentEnergy = scoreManager != null ? scoreManager.CurrentEnergy : 0;
+                InterfaceVR.Instance.ShowFeedback(false, $"RESPOSTA INCORRETA!\n-20% ENERGIA ({currentEnergy}%)");
             }
 
-            activeDebris.Remove(hitDebris);
-            hitDebris.Explode(false);
+            // Feedback visual no próprio detrito (flash vermelho temporário)
+            if (hitDebris != null) hitDebris.FlashError();
         }
+    }
+
+    private IEnumerator RespawnSingleDebrisRoutine(int spawnIndex, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        if (isDefenseActive && !enableMath)
+        {
+            SpawnSingleDebris(spawnIndex);
+        }
+    }
+
+    private int FindClosestSpawnIndex(Vector3 pos)
+    {
+        if (spawnPoints == null || spawnPoints.Length == 0) return 0;
+        int closest = 0;
+        float minDist = float.MaxValue;
+        for (int i = 0; i < spawnPoints.Length; i++)
+        {
+            if (spawnPoints[i] == null) continue;
+            float d = Vector3.Distance(pos, spawnPoints[i].position);
+            if (d < minDist)
+            {
+                minDist = d;
+                closest = i;
+            }
+        }
+        return closest;
     }
 
     private IEnumerator NextRoundRoutine()
@@ -238,17 +384,9 @@ public class GerenteDefesa : MonoBehaviour
             InterfaceVR.Instance.SetCockpitHUDVisible(false);
         }
 
-        if (TransicaoTela.Instance != null)
-        {
-            TransicaoTela.Instance.FadeOut(0.4f, () =>
-            {
-                SceneManager.LoadScene(shipSceneName);
-            });
-        }
-        else if (Application.CanStreamedLevelBeLoaded(shipSceneName))
-        {
-            SceneManager.LoadScene(shipSceneName);
-        }
+        string targetScene = !string.IsNullOrEmpty(shipSceneName) ? shipSceneName : "SampleScene";
+        Debug.Log($"[GerenteDefesa] Retornando imediatamente para a cena: '{targetScene}'");
+        SceneManager.LoadScene(targetScene);
     }
 }
 

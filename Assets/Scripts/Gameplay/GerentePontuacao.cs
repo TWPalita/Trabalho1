@@ -14,6 +14,7 @@ public class GerentePontuacao : MonoBehaviour
     [SerializeField] private int pointsPerCorrect = 100;
     [SerializeField] private int energyLossPerWrong = 20;
     [SerializeField] private int pointsLossPerWrong = 20;
+    [SerializeField] private bool enableGameOver = true;
 
     public int CurrentScore { get; private set; } = 0;
     public int CurrentEnergy { get; private set; } = 100;
@@ -79,7 +80,7 @@ public class GerentePontuacao : MonoBehaviour
         OnScoreChanged?.Invoke(CurrentScore);
         OnEnergyChanged?.Invoke(CurrentEnergy, maxEnergy);
 
-        if (IsGameOver)
+        if (enableGameOver && IsGameOver)
         {
             OnGameOver?.Invoke();
         }

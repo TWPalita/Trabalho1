@@ -5,11 +5,12 @@ using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Controls;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
+using UnityEngine.XR.Interaction.Toolkit.Interactables;
 
 /// <summary>
 /// Controla o disparo de laser em Realidade Virtual no Sistema de Defesa Espacial.
-/// Suporta controladores esquerdo e direito (Dual-Wielding) com disparo acionado por
-/// gatilho (Trigger), pegada (Grip) ou qualquer botão de ação dos controladores VR.
+/// Suporta armas empunhadas pelo jogador (XRGrabInteractable) e controladores VR diretos (Dual-Wielding)
+/// com disparo acionado por gatilho (Trigger), pegada (Grip) ou qualquer botão de ação dos controladores.
 /// Implementa redundância de entrada em múltiplas camadas (XRI Action-Based, Interactor,
 /// Novo Input System direto e fallback OpenXR/Legacy), mira por raio do interactor e
 /// assistência de pontaria por SphereCast generoso.
@@ -44,9 +45,12 @@ public class ArmaVR : MonoBehaviour
 
     private XRBaseInputInteractor cachedInteractor;
     private IXRRayProvider cachedRayProvider;
+    private XRGrabInteractable cachedGrabInteractable;
+    private UnityEngine.XR.Interaction.Toolkit.Interactors.IXRSelectInteractor currentHoldingInteractor;
 
     public UnityEngine.XR.XRNode ControllerNode => controllerNode;
     public bool CanShoot => canShoot;
+    public bool IsGrabbed => currentHoldingInteractor != null;
 
     private void Awake()
     {
@@ -61,9 +65,40 @@ public class ArmaVR : MonoBehaviour
 
         cachedInteractor = GetComponentInChildren<XRBaseInputInteractor>();
         cachedRayProvider = GetComponentInChildren<IXRRayProvider>();
+        cachedGrabInteractable = GetComponent<XRGrabInteractable>();
+        if (cachedGrabInteractable != null)
+        {
+            cachedGrabInteractable.selectEntered.AddListener(OnGrabSelected);
+            cachedGrabInteractable.selectExited.AddListener(OnGrabDeselected);
+            cachedGrabInteractable.activated.AddListener(OnGrabActivated);
+        }
 
         SetupMuzzlePoint();
         SetupLaserRenderer();
+    }
+
+    private void OnGrabSelected(SelectEnterEventArgs args)
+    {
+        currentHoldingInteractor = args.interactorObject;
+        if (currentHoldingInteractor != null)
+        {
+            string interactorName = currentHoldingInteractor.transform.name.ToLower();
+            if (interactorName.Contains("left")) controllerNode = UnityEngine.XR.XRNode.LeftHand;
+            else if (interactorName.Contains("right")) controllerNode = UnityEngine.XR.XRNode.RightHand;
+        }
+    }
+
+    private void OnGrabDeselected(SelectExitEventArgs args)
+    {
+        currentHoldingInteractor = null;
+    }
+
+    private void OnGrabActivated(ActivateEventArgs args)
+    {
+        if (canShoot && Time.time >= nextFireTime)
+        {
+            Fire();
+        }
     }
 
     private void Start()
@@ -219,6 +254,13 @@ public class ArmaVR : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (cachedGrabInteractable != null)
+        {
+            cachedGrabInteractable.selectEntered.RemoveListener(OnGrabSelected);
+            cachedGrabInteractable.selectExited.RemoveListener(OnGrabDeselected);
+            cachedGrabInteractable.activated.RemoveListener(OnGrabActivated);
+        }
+
         if (Instance == this) Instance = null;
         ActiveControllers.Remove(this);
         if (laserMat != null) Destroy(laserMat);
@@ -252,10 +294,32 @@ public class ArmaVR : MonoBehaviour
     {
         if (!canShoot || Time.time < nextFireTime) return;
 
+        // Se a arma for um item pegável (XRGrabInteractable), dispara apenas quando estiver empunhada
+        if (cachedGrabInteractable != null && currentHoldingInteractor == null) return;
+
+        // Se este for o blaster direto do controle, mas o interactor já estiver segurando uma arma física, cede a vez
+        if (cachedGrabInteractable == null && IsHoldingWeapon()) return;
+
         if (CheckFireInput())
         {
             Fire();
         }
+    }
+
+    private bool IsHoldingWeapon()
+    {
+        if (cachedInteractor != null && cachedInteractor.hasSelection)
+        {
+            for (int i = 0; i < cachedInteractor.interactablesSelected.Count; i++)
+            {
+                var sel = cachedInteractor.interactablesSelected[i];
+                if (sel is MonoBehaviour mb && mb.GetComponent<ArmaVR>() != null)
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /// <summary>
@@ -315,10 +379,8 @@ public class ArmaVR : MonoBehaviour
 
             if (IsControlActive(device, "trigger") ||
                 IsControlActive(device, "triggerButton") ||
-                IsControlActive(device, "activate") ||
                 IsControlActive(device, "grip") ||
                 IsControlActive(device, "gripButton") ||
-                IsControlActive(device, "select") ||
                 IsControlActive(device, "primaryButton") ||
                 IsControlActive(device, "secondaryButton"))
             {
@@ -372,16 +434,23 @@ public class ArmaVR : MonoBehaviour
 
     private bool IsControlActive(InputDevice device, string controlName)
     {
-        var control = device.GetChildControl(controlName);
-        if (control == null) return false;
+        try
+        {
+            var control = device.TryGetChildControl<InputControl>(controlName);
+            if (control == null) return false;
 
-        if (control is ButtonControl btn)
-        {
-            return btn.isPressed || btn.wasPressedThisFrame;
+            if (control is ButtonControl btn)
+            {
+                return btn.isPressed || btn.wasPressedThisFrame;
+            }
+            if (control is AxisControl axis)
+            {
+                return axis.ReadValue() > 0.45f;
+            }
         }
-        if (control is AxisControl axis)
+        catch
         {
-            return axis.ReadValue() > 0.45f;
+            return false;
         }
         return false;
     }
@@ -404,16 +473,16 @@ public class ArmaVR : MonoBehaviour
         Vector3 origin;
         Vector3 forward;
 
-        if (cachedRayProvider != null)
+        if (muzzlePoint != null)
+        {
+            origin = muzzlePoint.position;
+            forward = muzzlePoint.forward;
+        }
+        else if (cachedRayProvider != null)
         {
             Transform rayOrigin = cachedRayProvider.GetOrCreateRayOrigin();
             origin = rayOrigin != null ? rayOrigin.position : transform.position;
             forward = rayOrigin != null ? rayOrigin.forward : transform.forward;
-        }
-        else if (muzzlePoint != null)
-        {
-            origin = muzzlePoint.position;
-            forward = muzzlePoint.forward;
         }
         else
         {
@@ -447,13 +516,26 @@ public class ArmaVR : MonoBehaviour
         // 5. Vibração tátil no controlador VR (Haptics)
         TriggerHaptics(0.65f, 0.12f);
 
-        // 6. Avalia acerto com o alvo espacial
-        if (hitObject != null && GerenteDefesa.Instance != null)
+        // 6. Avalia acerto com o alvo (Botões de Interface VR no Cockpit ou Detritos Espaciais)
+        if (hitObject != null)
         {
+            // Interação direta com botões da interface (ex: RETORNAR, RECOMEÇAR, NOVA RODADA) ao atirar neles
+            UnityEngine.UI.Button hitBtn = hitObject.GetComponentInParent<UnityEngine.UI.Button>();
+            if (hitBtn != null && hitBtn.interactable)
+            {
+                if (GerenteSom.Instance != null) GerenteSom.Instance.PlayClick();
+                hitBtn.onClick.Invoke();
+                return;
+            }
+
             Detrito detrito = hitObject.GetComponentInParent<Detrito>();
             if (detrito != null)
             {
-                GerenteDefesa.Instance.OnDebrisHit(detrito);
+                GerenteDefesa def = GerenteDefesa.Instance != null ? GerenteDefesa.Instance : FindAnyObjectByType<GerenteDefesa>();
+                if (def != null)
+                {
+                    def.OnDebrisHit(detrito);
+                }
                 return;
             }
         }
@@ -461,6 +543,11 @@ public class ArmaVR : MonoBehaviour
 
     private void TriggerHaptics(float amplitude, float duration)
     {
+        if (currentHoldingInteractor is XRBaseInputInteractor grabInputInteractor)
+        {
+            grabInputInteractor.SendHapticImpulse(amplitude, duration);
+        }
+
         if (cachedInteractor != null)
         {
             cachedInteractor.SendHapticImpulse(amplitude, duration);
