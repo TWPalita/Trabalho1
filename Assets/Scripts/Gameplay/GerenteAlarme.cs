@@ -20,7 +20,7 @@ public class GerenteAlarme : MonoBehaviour
     [SerializeField] private float initialMessageDelay = 0.8f;
 
     [Tooltip("Tempo em segundos que o jogador tem para explorar a nave livremente após o diário")]
-    [SerializeField] private float explorationDelay = 12.0f;
+    [SerializeField] private float explorationDelay = 5.0f;
 
     [Header("Textos do Diário de Bordo")]
     [TextArea(2, 4)]
@@ -772,12 +772,8 @@ public class GerenteAlarme : MonoBehaviour
         }
 
         Debug.Log(
-            $"[GerenteAlarme] Exploração livre iniciada ({explorationDelay}s)..."
+            "[GerenteAlarme] Diário concluído. Exploração livre iniciada."
         );
-
-        yield return new WaitForSeconds(explorationDelay);
-
-        TriggerAlarm();
     }
 
     private void SetMessageText(string text)
@@ -841,26 +837,6 @@ public class GerenteAlarme : MonoBehaviour
                 );
             }
         }
-
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-        if (Keyboard.current != null &&
-            Keyboard.current.tKey.wasPressedThisFrame)
-        {
-            Debug.Log(
-                "[GerenteAlarme] Tecla T pressionada: disparando emergência imediatamente."
-            );
-
-            if (isReadingDiary)
-            {
-                isReadingDiary = false;
-
-                if (narrativeCanvasObject != null)
-                    narrativeCanvasObject.SetActive(false);
-            }
-
-            TriggerAlarm();
-        }
-#endif
     }
 
     private bool CheckAdvanceInput()
@@ -956,6 +932,24 @@ public class GerenteAlarme : MonoBehaviour
         }
     }
 
+    public void IniciarContagemAlerta()
+    {
+        if (emergencyRoutine != null)
+        {
+            StopCoroutine(emergencyRoutine);
+            emergencyRoutine = null;
+        }
+
+        StartCoroutine(AguardarAlerta());
+    }
+
+    private IEnumerator AguardarAlerta()
+    {
+        yield return new WaitForSeconds(explorationDelay);
+
+        TriggerAlarm();
+    }
+
     public void TriggerAlarm()
     {
         if (isAlarmActive)
@@ -1016,8 +1010,7 @@ public class GerenteAlarme : MonoBehaviour
 
             SetMessageText(
                 $"<size=125%><color=#EF4444><b>{alertTitle}</b></color></size>\n\n" +
-                $"<size=105%><color=#FCA5A5>{alertMessage}</color></size>\n\n" +
-                $"<size=70%><color=#94A3B8>{objectiveHint}</color></size>"
+                $"<size=105%><color=#FCA5A5>{alertMessage}</color></size>\n\n"
             );
 
             if (btnVoltar != null)
@@ -1107,6 +1100,34 @@ public class GerenteAlarme : MonoBehaviour
         {
             narrativeCanvasObject.SetActive(false);
         }
+    }
+
+    public void MostrarObjetivo()
+    {
+        if (narrativeCanvasObject == null || narrativeText == null)
+        {
+            Debug.LogWarning(
+                "[GerenteAlarme] Canvas ou texto não configurado."
+            );
+            return;
+        }
+
+        narrativeCanvasObject.SetActive(true);
+
+        if (narrativeCanvasGroup != null)
+            narrativeCanvasGroup.alpha = 1f;
+
+        SetMessageText(
+            $"<size=125%><color=#38BDF8><b>{objectiveTitle}</b></color></size>\n\n" +
+            $"<size=105%>{objectiveMessage}</size>\n\n" +
+            $"<size=70%><color=#94A3B8>{objectiveHint}</color></size>"
+        );
+
+        if (btnAvancar != null)
+            btnAvancar.gameObject.SetActive(false);
+
+        if (btnVoltar != null)
+            btnVoltar.gameObject.SetActive(false);
     }
 }
 
