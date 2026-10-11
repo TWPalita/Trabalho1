@@ -202,6 +202,9 @@ MonoBehaviour:
   objectiveMessage: "Corra at\xE9 o painel de controle e ative o sistema de defesa."
   objectiveHint: "[ Aperte o bot\xE3o na mesa no final da nave ]"
   emergencyLightsController: {fileID: 77100006}
+  objectiveCanvasObject: {fileID: 0}
+  fixedObjectivePosition: {x: -8.71, y: 1.5439398, z: -1.4135463}
+  fixedObjectiveRotation: {x: 0, y: 180, z: 0}
   showWorldSpaceNarrativeUI: 1
   narrativeCanvasObject: {fileID: 77300001}
   narrativeText: {fileID: 77300033}
@@ -699,7 +702,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -3.57, y: 1.4}
+  m_AnchoredPosition: {x: -8.24, y: 1.4}
   m_SizeDelta: {x: 850, y: 400}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!223 &77300003

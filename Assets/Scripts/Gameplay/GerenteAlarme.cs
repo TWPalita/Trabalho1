@@ -52,6 +52,12 @@ public class GerenteAlarme : MonoBehaviour
     [Header("Controle de Luzes de Emergência")]
     [SerializeField] private LuzesEmergencia emergencyLightsController;
 
+    [Header("Posicionamento Fixo do Objetivo (World Space)")]
+    [Tooltip("Canvas opcional dedicado para o objetivo (se não atribuído, utiliza narrativeCanvasObject)")]
+    [SerializeField] private GameObject objectiveCanvasObject;
+    [SerializeField] private Vector3 fixedObjectivePosition = new Vector3(-8.710000038146973f, 1.5439398288726807f, -1.4135463237762452f);
+    [SerializeField] private Vector3 fixedObjectiveRotation = new Vector3(0f, 180f, 0f);
+
     [Header("Interface Holográfica em World Space (VR)")]
     [Tooltip("Se verdadeiro, exibe a interface holográfica World Space com a narrativa inicial")]
     [SerializeField] private bool showWorldSpaceNarrativeUI = true;
@@ -264,18 +270,6 @@ public class GerenteAlarme : MonoBehaviour
             narrativeText = canvasObj.GetComponentInChildren<TMP_Text>();
         }
 
-        if (narrativeText != null)
-        {
-            RectTransform textRt = narrativeText.rectTransform;
-
-            textRt.anchorMin = new Vector2(0.5f, 0.5f);
-            textRt.anchorMax = new Vector2(0.5f, 0.5f);
-            textRt.pivot = new Vector2(0.5f, 0.5f);
-
-            textRt.anchoredPosition = new Vector2(0f, 53f);
-            textRt.sizeDelta = new Vector2(740f, 250f);
-        }
-
         UnityEngine.UI.Image[] images =
             canvasObj.GetComponentsInChildren<UnityEngine.UI.Image>(true);
 
@@ -317,6 +311,7 @@ public class GerenteAlarme : MonoBehaviour
                 btnVoltar = t.GetComponent<Button>();
         }
 
+        // Fallback procedural apenas se não existirem na hierarquia
         if (btnVoltar == null)
         {
             btnVoltar = CreateHolographicButton(
@@ -684,9 +679,7 @@ public class GerenteAlarme : MonoBehaviour
 
         if (btnVoltar != null)
         {
-            btnVoltar.gameObject.SetActive(
-                currentStoryPage > 0
-            );
+            btnVoltar.gameObject.SetActive(currentStoryPage > 0);
 
             if (txtBtnVoltar != null)
                 txtBtnVoltar.text = textoBotaoVoltar;
@@ -697,18 +690,6 @@ public class GerenteAlarme : MonoBehaviour
         if (btnAvancar != null)
         {
             btnAvancar.gameObject.SetActive(true);
-
-            RectTransform btnRt =
-                btnAvancar.GetComponent<RectTransform>();
-
-            if (btnRt != null)
-            {
-                btnRt.anchoredPosition =
-                    new Vector2(190f, -135f);
-
-                btnRt.sizeDelta =
-                    new Vector2(230f, 52f);
-            }
 
             SetButtonListener(btnAvancar, AvancarPagina);
 
@@ -747,13 +728,6 @@ public class GerenteAlarme : MonoBehaviour
 
         if (btnVoltar != null)
             btnVoltar.gameObject.SetActive(false);
-
-        // DIÁRIO CONCLUÍDO: posição Y = 60
-        if (narrativeText != null)
-        {
-            narrativeText.rectTransform.anchoredPosition =
-                new Vector2(0f, 50f);
-        }
 
         SetMessageText(
             "<size=90%><color=#38BDF8><b>DIÁRIO CONCLUÍDO</b></color></size>\n\n" +
@@ -885,51 +859,8 @@ public class GerenteAlarme : MonoBehaviour
 
     private void LateUpdate()
     {
-        if (narrativeCanvasObject != null &&
-            narrativeCanvasObject.activeSelf)
-        {
-            Camera cam = Camera.main;
-
-            if (cam != null)
-            {
-                Vector3 toCam =
-                    narrativeCanvasObject.transform.position -
-                    cam.transform.position;
-
-                if (toCam.sqrMagnitude > 0.05f)
-                {
-                    narrativeCanvasObject.transform.rotation =
-                        Quaternion.LookRotation(toCam);
-                }
-
-                if (toCam.magnitude > 3.5f)
-                {
-                    Vector3 camFwd =
-                        cam.transform.forward;
-
-                    camFwd.y = 0f;
-
-                    if (camFwd.sqrMagnitude > 0.05f)
-                    {
-                        camFwd.Normalize();
-
-                        Vector3 desiredPos =
-                            cam.transform.position +
-                            camFwd * 1.8f;
-
-                        desiredPos.y =
-                            cam.transform.position.y + 0.05f;
-
-                        narrativeCanvasObject.transform.position =
-                            Vector3.Lerp(
-                                narrativeCanvasObject.transform.position,
-                                desiredPos,
-                                Time.deltaTime * 3.5f
-                            );
-                    }
-                }
-            }
-        }
+        // O canvas permanece em local fixo no mundo 3D após posicionado na frente do personagem,
+        // sem flutuar, girar ou seguir dinamicamente a câmera.
     }
 
     public void IniciarContagemAlerta()
@@ -972,87 +903,87 @@ public class GerenteAlarme : MonoBehaviour
 
     private IEnumerator EmergencySequenceRoutine()
     {
-        // 1. Sirene começa a tocar
-        if (GerenteSom.Instance != null)
+        // 1. Objetivo do jogador descomentado (exibido na posição fixa especificada no espaço 3D)
+        GameObject objCanvas = GetObjectiveCanvasObject();
+        if (showWorldSpaceNarrativeUI && objCanvas != null)
         {
-            GerenteSom.Instance.StartAlarm();
-        }
-
-        yield return new WaitForSeconds(0.8f);
-
-        // 2. Luzes vermelhas começam a piscar
-        if (emergencyLightsController != null)
-        {
-            emergencyLightsController.StartEmergencyLights();
-        }
-
-        yield return new WaitForSeconds(0.7f);
-
-        // 3. Exibe alerta holográfico em vermelho com botão ENTENDIDO
-        if (
-            showWorldSpaceNarrativeUI &&
-            narrativeCanvasObject != null)
-        {
-            AlignHologramWithPlayer();
+            PositionObjectiveCanvas();
             SetHologramTheme(true);
 
-            narrativeCanvasObject.SetActive(true);
+            objCanvas.SetActive(true);
 
-            if (narrativeCanvasGroup != null)
-                narrativeCanvasGroup.alpha = 0f;
+            CanvasGroup cg = objCanvas.GetComponent<CanvasGroup>();
+            if (cg == null) cg = narrativeCanvasGroup;
+            if (cg != null) cg.alpha = 0f;
 
-            // ALERTA: posição Y = 60
-            if (narrativeText != null)
+            TMP_Text txt = objCanvas.GetComponentInChildren<TMP_Text>();
+            if (txt == null) txt = narrativeText;
+            if (txt != null)
             {
-                narrativeText.rectTransform.anchoredPosition =
-                    new Vector2(0f, 35f);
+                txt.text =
+                    $"<size=125%><color=#FCD34D><b>{objectiveTitle}</b></color></size>\n\n" +
+                    $"<size=110%><color=#FFFFFF><b>{objectiveMessage}</b></color></size>\n\n" +
+                    $"<size=75%><color=#94A3B8>{objectiveHint}</color></size>";
             }
-
-            SetMessageText(
-                $"<size=125%><color=#EF4444><b>{alertTitle}</b></color></size>\n\n" +
-                $"<size=105%><color=#FCA5A5>{alertMessage}</color></size>\n\n"
-            );
 
             if (btnVoltar != null)
                 btnVoltar.gameObject.SetActive(false);
 
             if (btnAvancar != null)
+                btnAvancar.gameObject.SetActive(false);
+
+            // No momento em que o objetivo aparece, a música e as luzes iniciam juntas!
+            if (GerenteSom.Instance != null)
             {
-                btnAvancar.gameObject.SetActive(true);
+                GerenteSom.Instance.StartAlarm();
+            }
 
-                RectTransform btnRt =
-                    btnAvancar.GetComponent<RectTransform>();
-
-                if (btnRt != null)
-                {
-                    btnRt.anchoredPosition =
-                        new Vector2(0f, -135f);
-
-                    btnRt.sizeDelta =
-                        new Vector2(250f, 52f);
-                }
-
-                if (txtBtnAvancar != null)
-                {
-                    txtBtnAvancar.text =
-                        textoBotaoAlerta;
-                }
-
-                SetButtonListener(btnAvancar, () =>
-                {
-                    if (GerenteSom.Instance != null)
-                        GerenteSom.Instance.PlayClick();
-
-                    StartCoroutine(
-                        DismissHologramRoutine()
-                    );
-                });
+            if (emergencyLightsController != null)
+            {
+                emergencyLightsController.StartEmergencyLights();
             }
 
             yield return StartCoroutine(
                 FadeCanvasGroup(1f, 0.35f)
             );
         }
+        else
+        {
+            if (GerenteSom.Instance != null)
+            {
+                GerenteSom.Instance.StartAlarm();
+            }
+
+            if (emergencyLightsController != null)
+            {
+                emergencyLightsController.StartEmergencyLights();
+            }
+        }
+    }
+
+    public void PositionObjectiveCanvas()
+    {
+        GameObject targetObj = GetObjectiveCanvasObject();
+        if (targetObj == null) return;
+
+        targetObj.transform.position = fixedObjectivePosition;
+        targetObj.transform.rotation = Quaternion.Euler(fixedObjectiveRotation);
+    }
+
+    private GameObject GetObjectiveCanvasObject()
+    {
+        if (objectiveCanvasObject != null) return objectiveCanvasObject;
+
+        GameObject found = GameObject.Find("CanvasObjetivo") 
+                        ?? GameObject.Find("Canvas_Objetivo") 
+                        ?? GameObject.Find("ObjectiveCanvas");
+        if (found != null)
+        {
+            objectiveCanvasObject = found;
+            return objectiveCanvasObject;
+        }
+
+        return narrativeCanvasObject;
     }
 
     public void StopAlarm()
@@ -1082,7 +1013,7 @@ public class GerenteAlarme : MonoBehaviour
             emergencyLightsController.StopEmergencyLights();
         }
 
-        if (narrativeCanvasObject != null)
+        if (narrativeCanvasObject != null || objectiveCanvasObject != null)
         {
             StartCoroutine(
                 DismissHologramRoutine()
@@ -1100,11 +1031,17 @@ public class GerenteAlarme : MonoBehaviour
         {
             narrativeCanvasObject.SetActive(false);
         }
+
+        if (objectiveCanvasObject != null)
+        {
+            objectiveCanvasObject.SetActive(false);
+        }
     }
 
     public void MostrarObjetivo()
     {
-        if (narrativeCanvasObject == null || narrativeText == null)
+        GameObject objCanvas = GetObjectiveCanvasObject();
+        if (objCanvas == null)
         {
             Debug.LogWarning(
                 "[GerenteAlarme] Canvas ou texto não configurado."
@@ -1112,16 +1049,34 @@ public class GerenteAlarme : MonoBehaviour
             return;
         }
 
-        narrativeCanvasObject.SetActive(true);
+        PositionObjectiveCanvas();
+        SetHologramTheme(true);
+        objCanvas.SetActive(true);
 
-        if (narrativeCanvasGroup != null)
-            narrativeCanvasGroup.alpha = 1f;
+        // No momento em que o objetivo aparece, a música e as luzes iniciam juntas!
+        if (GerenteSom.Instance != null)
+        {
+            GerenteSom.Instance.StartAlarm();
+        }
 
-        SetMessageText(
-            $"<size=125%><color=#38BDF8><b>{objectiveTitle}</b></color></size>\n\n" +
-            $"<size=105%>{objectiveMessage}</size>\n\n" +
-            $"<size=70%><color=#94A3B8>{objectiveHint}</color></size>"
-        );
+        if (emergencyLightsController != null)
+        {
+            emergencyLightsController.StartEmergencyLights();
+        }
+
+        CanvasGroup cg = objCanvas.GetComponent<CanvasGroup>();
+        if (cg == null) cg = narrativeCanvasGroup;
+        if (cg != null) cg.alpha = 1f;
+
+        TMP_Text txt = objCanvas.GetComponentInChildren<TMP_Text>();
+        if (txt == null) txt = narrativeText;
+        if (txt != null)
+        {
+            txt.text =
+                $"<size=125%><color=#FCD34D><b>{objectiveTitle}</b></color></size>\n\n" +
+                $"<size=110%><color=#FFFFFF><b>{objectiveMessage}</b></color></size>\n\n" +
+                $"<size=75%><color=#94A3B8>{objectiveHint}</color></size>";
+        }
 
         if (btnAvancar != null)
             btnAvancar.gameObject.SetActive(false);
