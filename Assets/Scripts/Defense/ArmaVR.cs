@@ -763,7 +763,27 @@ public class ArmaVR : MonoBehaviour
             return;
         }
 
-        if (!canShoot || Time.time < nextFireTime) return;
+        if (Time.time < nextFireTime) return;
+
+        // Mesmo quando o disparo de combate está desativado (Introdução, Vitória ou Derrota),
+        // permite clicar nos botões dos Canvas apontando e pressionando o gatilho
+        if (!canShoot)
+        {
+            if (IsGrabbableWeapon)
+            {
+                if (!isEquippedInHand || Time.time - lastGrabTime < 0.25f) return;
+            }
+            else if (IsAnyGrabbableWeaponEquipped())
+            {
+                return;
+            }
+
+            if (CheckFireInput())
+            {
+                TryClickUIButtonOnly();
+            }
+            return;
+        }
 
         if (IsGrabbableWeapon)
         {
@@ -772,13 +792,77 @@ public class ArmaVR : MonoBehaviour
         }
         else
         {
-            // Se existir uma arma física pegável na cena (ex: 'arma'), o jogador só atira com a arma equipada na mão
-            if (HasGrabbableWeaponInScene() || IsHoldingWeapon()) return;
+            // Se existir uma arma física pegável na cena (ex: 'arma'), o jogador só atira em detritos com a arma equipada na mão
+            if (HasGrabbableWeaponInScene() || IsHoldingWeapon())
+            {
+                if (!IsAnyGrabbableWeaponEquipped() && CheckFireInput())
+                {
+                    TryClickUIButtonOnly();
+                }
+                return;
+            }
         }
 
         if (CheckFireInput())
         {
             Fire();
+        }
+    }
+
+    private static bool IsAnyGrabbableWeaponEquipped()
+    {
+        for (int i = 0; i < ActiveControllers.Count; i++)
+        {
+            var c = ActiveControllers[i];
+            if (c != null && c.gameObject.activeInHierarchy && c.IsGrabbableWeapon && c.IsGrabbed)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void TryClickUIButtonOnly()
+    {
+        Vector3 origin;
+        Vector3 forward;
+
+        if (muzzlePoint != null)
+        {
+            origin = muzzlePoint.position;
+            forward = muzzlePoint.forward;
+        }
+        else if (cachedRayProvider != null)
+        {
+            Transform rayOrigin = cachedRayProvider.GetOrCreateRayOrigin();
+            origin = rayOrigin != null ? rayOrigin.position : transform.position;
+            forward = rayOrigin != null ? rayOrigin.forward : transform.forward;
+        }
+        else
+        {
+            origin = transform.position;
+            forward = transform.forward;
+        }
+
+        RaycastHit[] hits = Physics.RaycastAll(origin, forward, maxDistance, hitLayers, QueryTriggerInteraction.Collide);
+        if (hits == null || hits.Length == 0) return;
+
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        for (int i = 0; i < hits.Length; i++)
+        {
+            if (hits[i].distance <= 0.05f) continue;
+            Collider col = hits[i].collider;
+            if (col == null) continue;
+
+            UnityEngine.UI.Button hitBtn = col.GetComponentInParent<UnityEngine.UI.Button>();
+            if (hitBtn != null && hitBtn.interactable)
+            {
+                nextFireTime = Time.time + fireRate;
+                if (GerenteSom.Instance != null) GerenteSom.Instance.PlayClick();
+                TriggerHaptics(0.45f, 0.08f);
+                hitBtn.onClick.Invoke();
+                return;
+            }
         }
     }
 

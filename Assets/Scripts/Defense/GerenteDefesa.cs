@@ -25,6 +25,7 @@ public class GerenteDefesa : MonoBehaviour
 
     [Header("Configurações das Rodadas")]
     [SerializeField] private float delayBetweenRounds = 1.5f;
+    [SerializeField] private int roundsToWin = 5;
     [SerializeField] private Transform shipExplorationSpawn;
     [SerializeField] private string shipSceneName = "SampleScene";
     [SerializeField] private bool autoStartOnAwake = false;
@@ -59,9 +60,12 @@ public class GerenteDefesa : MonoBehaviour
             scoreManager.OnGameOver += HandleGameOver;
         }
 
-        if (autoStartOnAwake)
+        // Garante que a sequência narrativa de introdução (Canvas 1 -> Canvas 2 -> Combate) seja exibida ao chegar na cena
+        IntroducaoDefesaVR intro = FindAnyObjectByType<IntroducaoDefesaVR>();
+        if (intro == null)
         {
-            StartDefense();
+            GameObject introObj = new GameObject("IntroducaoDefesaVR_Controller");
+            intro = introObj.AddComponent<IntroducaoDefesaVR>();
         }
     }
 
@@ -99,6 +103,7 @@ public class GerenteDefesa : MonoBehaviour
         {
             InterfaceVR.Instance.HideGameOverPanel();
             InterfaceVR.Instance.SetCockpitHUDVisible(true);
+            InterfaceVR.Instance.SetHUDRootElementsVisible(true);
         }
 
         StartNewRound();
@@ -244,19 +249,13 @@ public class GerenteDefesa : MonoBehaviour
             // 2. Vibração tátil no controlador VR
             ArmaVR.TriggerAllHaptics(0.8f, 0.18f);
 
-            // 3. Feedback visual no HUD do Cockpit
-            if (InterfaceVR.Instance != null)
-            {
-                InterfaceVR.Instance.ShowFeedback(true, "DETRITO ELIMINADO!");
-            }
-
-            // 4. Identifica ponto de spawn original mais próximo para respawn
+            // 3. Identifica ponto de spawn original mais próximo para respawn
             int spIndex = FindClosestSpawnIndex(hitDebris.transform.position);
 
             activeDebris.Remove(hitDebris);
             hitDebris.Explode(true);
 
-            // 5. Respawn automático após intervalo para manter continuamente alvos no espaço
+            // 4. Respawn automático após intervalo para manter continuamente alvos no espaço
             StartCoroutine(RespawnSingleDebrisRoutine(spIndex, 1.8f));
             return;
         }
@@ -279,11 +278,6 @@ public class GerenteDefesa : MonoBehaviour
             if (scoreManager != null) scoreManager.AddCorrectHit();
             if (GerenteSom.Instance != null) GerenteSom.Instance.PlayCorrect();
 
-            if (InterfaceVR.Instance != null)
-            {
-                InterfaceVR.Instance.ShowFeedback(true, "CORRETO!\n+100 PONTOS");
-            }
-
             activeDebris.Remove(hitDebris);
             hitDebris.Explode(true);
 
@@ -304,12 +298,6 @@ public class GerenteDefesa : MonoBehaviour
             }
 
             if (GerenteSom.Instance != null) GerenteSom.Instance.PlayError();
-
-            if (InterfaceVR.Instance != null)
-            {
-                int currentEnergy = scoreManager != null ? scoreManager.CurrentEnergy : 0;
-                InterfaceVR.Instance.ShowFeedback(false, $"RESPOSTA INCORRETA!\n-20% ENERGIA ({currentEnergy}%)");
-            }
 
             // Feedback visual no próprio detrito (flash vermelho temporário)
             if (hitDebris != null) hitDebris.FlashError();
@@ -348,7 +336,15 @@ public class GerenteDefesa : MonoBehaviour
         yield return new WaitForSeconds(0.4f);
         ClearAllDebris();
 
-        yield return new WaitForSeconds(delayBetweenRounds - 0.4f);
+        yield return new WaitForSeconds(Mathf.Max(1.8f, delayBetweenRounds - 0.4f));
+
+        if (!isDefenseActive) yield break;
+
+        if (roundsToWin > 0 && currentRound >= roundsToWin)
+        {
+            HandleVictory();
+            yield break;
+        }
 
         currentRound++;
         StartNewRound();
@@ -361,6 +357,30 @@ public class GerenteDefesa : MonoBehaviour
             if (deb != null) Destroy(deb.gameObject);
         }
         activeDebris.Clear();
+    }
+
+    private void HandleVictory()
+    {
+        isRoundTransitioning = true;
+        isDefenseActive = false;
+        ArmaVR.SetAllCanShoot(false);
+        if (weaponController != null) weaponController.SetCanShoot(false);
+        ClearAllDebris();
+
+        if (InterfaceVR.Instance != null && scoreManager != null)
+        {
+            InterfaceVR.Instance.ShowVictory(
+                scoreManager.CurrentScore,
+                scoreManager.CorrectAnswers,
+                scoreManager.WrongAnswers,
+                scoreManager.AccuracyPercentage,
+                scoreManager.CompletedRounds
+            );
+        }
+        else if (InterfaceVR.Instance != null)
+        {
+            InterfaceVR.Instance.ShowVictory();
+        }
     }
 
     private void HandleGameOver()

@@ -1,15 +1,17 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
-using UnityEngine.XR.Interaction.Toolkit;
+using UnityEngine.XR;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
+using UnityEngine.XR.Interaction.Toolkit.UI;
+using TMPro;
 
 /// <summary>
 /// Controla a sequência de introdução narrativa na DefenseScene antes do início da batalha espacial:
-/// 1. Exibe o Canvas de Protocolo de Interceptação (explicação matemática das coordenadas dos detritos);
-/// 2. Exibe o Canvas de Controle da Arma com a arma 3D física disponível no console em frente ao jogador;
-/// 3. Bloqueia os disparos até que o jogador clique em 'INICIAR DEFESA';
+/// 1. Exibe o Canvas 1: PROTOCOLO DE INTERCEPTAÇÃO / SISTEMA DE DEFESA ATIVADO com botão [ ENTENDI ];
+/// 2. Exibe o Canvas 2: CONTROLE DA ARMA / PREPARE-SE PARA A INTERCEPTAÇÃO com botão [ INICIAR DEFESA ];
+/// 3. Bloqueia o combate até que o jogador clique em [ INICIAR DEFESA ];
 /// 4. Inicia a defesa espacial e libera os disparos.
 /// </summary>
 public class IntroducaoDefesaVR : MonoBehaviour
@@ -24,9 +26,14 @@ public class IntroducaoDefesaVR : MonoBehaviour
 
     [Header("Arma Física do Cockpit")]
     [SerializeField] private GameObject physicalWeaponObj;
-    [SerializeField] private Transform weaponSpawnPoint;
 
     private bool isIntroActive = true;
+    private int currentStep = 1; // 1 = Canvas 1 (Protocolo), 2 = Canvas 2 (Arma), 0 = Concluído
+    private float inputCooldown = 0.5f;
+    private bool wasTriggerOrPrimaryPressed = false;
+    private readonly List<UnityEngine.XR.InputDevice> xrControllers = new List<UnityEngine.XR.InputDevice>();
+
+    public bool IsIntroActive => isIntroActive;
 
     private void Awake()
     {
@@ -36,49 +43,178 @@ public class IntroducaoDefesaVR : MonoBehaviour
 
     private void Start()
     {
-        // 1. Bloqueia disparos de laser durante as instruções
+        BeginIntroSequence();
+    }
+
+    public void BeginIntroSequence()
+    {
+        isIntroActive = true;
+        currentStep = 1;
+        inputCooldown = 0.45f;
+
+        // 1. Bloqueia disparos de combate durante os canvases de introdução
         ArmaVR.SetAllCanShoot(false);
 
-        // 2. Garante posicionamento da arma física e canvases
+        // 2. Garante a configuração da arma da cena e dos canvases de história
         EnsureWeaponInCockpit();
         EnsureInstructionCanvases();
 
-        // 3. Oculta temporariamente o HUD de combate para foco na narrativa
+        // 3. Oculta temporariamente o HUD de combate para foco total na história e instruções
         if (InterfaceVR.Instance != null)
         {
+            InterfaceVR.Instance.HideGameOverPanel();
             InterfaceVR.Instance.SetCockpitHUDVisible(false);
+            InterfaceVR.Instance.SetHUDRootElementsVisible(false);
         }
 
-        // 4. Inicia exibindo o primeiro canvas (Protocolo de Interceptação)
+        // 4. Exibe o primeiro Canvas (Protocolo de Interceptação)
         ShowCanvas1();
+    }
+
+    private void Update()
+    {
+        if (!isIntroActive) return;
+
+        if (inputCooldown > 0f)
+        {
+            inputCooldown -= Time.deltaTime;
+            return;
+        }
+
+        // 1. Suporte a clique com o Mouse no Editor / Simulator diretamente sobre o botão ou Canvas
+#if ENABLE_INPUT_SYSTEM
+        if (UnityEngine.InputSystem.Mouse.current != null &&
+            UnityEngine.InputSystem.Mouse.current.leftButton.wasPressedThisFrame)
+        {
+            Camera cam = Camera.main;
+            if (cam != null)
+            {
+                Vector2 mousePos = UnityEngine.InputSystem.Mouse.current.position.ReadValue();
+                Ray ray = cam.ScreenPointToRay(mousePos);
+                if (TryRaycastInstructionButton(ray))
+                {
+                    return;
+                }
+            }
+        }
+
+        if (UnityEngine.InputSystem.Keyboard.current != null)
+        {
+            var kb = UnityEngine.InputSystem.Keyboard.current;
+            if (kb.spaceKey.wasPressedThisFrame || kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame)
+            {
+                TriggerCurrentStepButton();
+                return;
+            }
+        }
+#endif
+
+        // 2. Suporte a controles VR (Gatilho apontando para o botão/canvas ou Botão Primário A/X)
+        bool pressedNow = false;
+        xrControllers.Clear();
+        InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Controller, xrControllers);
+        for (int i = 0; i < xrControllers.Count; i++)
+        {
+            var dev = xrControllers[i];
+            if (!dev.isValid) continue;
+
+            if (dev.TryGetFeatureValue(CommonUsages.primaryButton, out bool prim) && prim)
+                pressedNow = true;
+            if (dev.TryGetFeatureValue(CommonUsages.triggerButton, out bool trigBtn) && trigBtn)
+                pressedNow = true;
+            else if (dev.TryGetFeatureValue(CommonUsages.trigger, out float trigVal) && trigVal > 0.55f)
+                pressedNow = true;
+        }
+
+        if (pressedNow && !wasTriggerOrPrimaryPressed)
+        {
+            wasTriggerOrPrimaryPressed = true;
+            TriggerCurrentStepButton();
+            return;
+        }
+
+        if (!pressedNow)
+        {
+            wasTriggerOrPrimaryPressed = false;
+        }
+    }
+
+    private bool TryRaycastInstructionButton(Ray ray)
+    {
+        RaycastHit[] hits = Physics.RaycastAll(ray, 25f, ~0, QueryTriggerInteraction.Collide);
+        if (hits == null || hits.Length == 0) return false;
+
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        for (int i = 0; i < hits.Length; i++)
+        {
+            if (hits[i].collider == null) continue;
+            Button btn = hits[i].collider.GetComponentInParent<Button>();
+            if (btn != null && btn.interactable &&
+                ((canvas1Protocolo != null && canvas1Protocolo.activeInHierarchy && btn.transform.IsChildOf(canvas1Protocolo.transform)) ||
+                 (canvas2Arma != null && canvas2Arma.activeInHierarchy && btn.transform.IsChildOf(canvas2Arma.transform))))
+            {
+                inputCooldown = 0.45f;
+                btn.onClick.Invoke();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void TriggerCurrentStepButton()
+    {
+        inputCooldown = 0.5f;
+        if (currentStep == 1)
+        {
+            OnClickEntendiProtocolo();
+        }
+        else if (currentStep == 2)
+        {
+            OnClickIniciarDefesa();
+        }
     }
 
     private void ShowCanvas1()
     {
+        currentStep = 1;
         if (canvas1Protocolo != null) canvas1Protocolo.SetActive(true);
         if (canvas2Arma != null) canvas2Arma.SetActive(false);
-        if (group1 != null) StartCoroutine(FadeRoutine(group1, 0f, 1f, 0.35f));
+        if (group1 != null)
+        {
+            group1.alpha = 1f;
+            StartCoroutine(FadeRoutine(group1, 0f, 1f, 0.3f));
+        }
     }
 
     public void OnClickEntendiProtocolo()
     {
+        if (!isIntroActive || currentStep != 1) return;
+        currentStep = 2;
+        inputCooldown = 0.5f;
+
         if (GerenteSom.Instance != null) GerenteSom.Instance.PlayClick();
         StartCoroutine(TransitionToCanvas2Routine());
     }
 
     private IEnumerator TransitionToCanvas2Routine()
     {
-        if (group1 != null) yield return StartCoroutine(FadeRoutine(group1, 1f, 0f, 0.25f));
+        if (group1 != null) yield return StartCoroutine(FadeRoutine(group1, 1f, 0f, 0.2f));
         if (canvas1Protocolo != null) canvas1Protocolo.SetActive(false);
 
         if (canvas2Arma != null) canvas2Arma.SetActive(true);
-        if (group2 != null) yield return StartCoroutine(FadeRoutine(group2, 0f, 1f, 0.35f));
+        if (group2 != null)
+        {
+            group2.alpha = 0f;
+            yield return StartCoroutine(FadeRoutine(group2, 0f, 1f, 0.3f));
+        }
     }
 
     public void OnClickIniciarDefesa()
     {
-        if (!isIntroActive) return;
+        if (!isIntroActive || currentStep != 2) return;
         isIntroActive = false;
+        currentStep = 0;
+        inputCooldown = 0.5f;
 
         if (GerenteSom.Instance != null) GerenteSom.Instance.PlayClick();
         StartCoroutine(StartDefenseSequenceRoutine());
@@ -86,25 +222,22 @@ public class IntroducaoDefesaVR : MonoBehaviour
 
     private IEnumerator StartDefenseSequenceRoutine()
     {
-        if (group2 != null) yield return StartCoroutine(FadeRoutine(group2, 1f, 0f, 0.3f));
+        if (group2 != null) yield return StartCoroutine(FadeRoutine(group2, 1f, 0f, 0.25f));
         if (canvas2Arma != null) canvas2Arma.SetActive(false);
 
-        // 1. Libera disparos de arma
-        ArmaVR.SetAllCanShoot(true);
-
-        // 2. Exibe o HUD do Cockpit
+        // 1. Exibe o HUD do Cockpit
         if (InterfaceVR.Instance != null)
         {
+            InterfaceVR.Instance.SetHUDRootElementsVisible(true);
             InterfaceVR.Instance.SetCockpitHUDVisible(true);
         }
 
-        // 3. Inicia a defesa no GerenteDefesa
+        // 2. Libera disparos e inicia a defesa no GerenteDefesa
+        ArmaVR.SetAllCanShoot(true);
         if (GerenteDefesa.Instance != null)
         {
             GerenteDefesa.Instance.StartDefense();
         }
-
-        Debug.Log("[IntroducaoDefesaVR] Defesa iniciada com sucesso!");
     }
 
     private IEnumerator FadeRoutine(CanvasGroup cg, float from, float to, float duration)
@@ -120,162 +253,73 @@ public class IntroducaoDefesaVR : MonoBehaviour
         cg.alpha = to;
     }
 
-    /// <summary>
-    /// Garante que a arma física 3D do projeto (arma.obj) esteja instanciada,
-    /// com XRGrabInteractable e ArmaVR no suporte do cockpit em frente ao piloto.
-    /// </summary>
     private void EnsureWeaponInCockpit()
     {
-        if (physicalWeaponObj != null) return;
-
-        // Procura se já existe no cenário
-        Transform existing = transform.Find("ArmaLaser_Cockpit");
-        if (existing != null)
+        ArmaVR configuredWeapon = ArmaVR.EnsureScenePhysicalWeaponConfigured();
+        if (configuredWeapon != null)
         {
-            physicalWeaponObj = existing.gameObject;
-            return;
+            physicalWeaponObj = configuredWeapon.gameObject;
         }
-
-        // Cria o suporte / suporte da arma
-        Vector3 weaponPos = new Vector3(0f, 0.72f, 0.95f);
-        Quaternion weaponRot = Quaternion.Euler(-12f, 0f, 0f);
-
-        GameObject weaponObj = new GameObject("ArmaLaser_Cockpit");
-        weaponObj.transform.position = weaponPos;
-        weaponObj.transform.rotation = weaponRot;
-
-        // Carrega o mesh da arma existente
-        Mesh weaponMesh = null;
-#if UNITY_EDITOR
-        weaponMesh = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Componentes/ArmaLaser/source/arma.obj");
-#endif
-        if (weaponMesh == null)
-        {
-            // Fallback para modelos carregados
-            var meshes = Resources.FindObjectsOfTypeAll<Mesh>();
-            foreach (var m in meshes)
-            {
-                if (m.name.ToLower().Contains("arma") || m.name.ToLower().Contains("gun"))
-                {
-                    weaponMesh = m;
-                    break;
-                }
-            }
-        }
-
-        GameObject visualModel = new GameObject("VisualModel");
-        visualModel.transform.SetParent(weaponObj.transform, false);
-
-        if (weaponMesh != null)
-        {
-            MeshFilter mf = visualModel.AddComponent<MeshFilter>();
-            mf.sharedMesh = weaponMesh;
-
-            MeshRenderer mr = visualModel.AddComponent<MeshRenderer>();
-            Material mat = Resources.Load<Material>("Assets/Componentes/ArmaLaser/ArmaLaser_Mat");
-#if UNITY_EDITOR
-            if (mat == null) mat = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Componentes/ArmaLaser/ArmaLaser_Mat.mat");
-#endif
-            if (mat != null) mr.sharedMaterial = mat;
-            else mr.material.color = new Color(0.2f, 0.75f, 0.9f);
-
-            visualModel.transform.localScale = new Vector3(0.18f, 0.18f, 0.18f);
-            visualModel.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
-        }
-        else
-        {
-            // Fallback estilizado com primitivas caso o mesh ainda não tenha sido linkado
-            GameObject body = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            body.name = "CorpoLaser";
-            body.transform.SetParent(visualModel.transform, false);
-            body.transform.localScale = new Vector3(0.08f, 0.18f, 0.08f);
-            body.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            body.GetComponent<Renderer>().material.color = new Color(0.1f, 0.6f, 0.85f);
-            var bc = body.GetComponent<Collider>();
-            if (bc != null) Destroy(bc);
-        }
-
-        // Colisor e Rigidbody
-        BoxCollider box = weaponObj.AddComponent<BoxCollider>();
-        box.size = new Vector3(0.22f, 0.28f, 0.45f);
-        box.center = new Vector3(0f, 0.04f, 0.08f);
-
-        Rigidbody rb = weaponObj.AddComponent<Rigidbody>();
-        rb.mass = 1.8f;
-        rb.isKinematic = true; // Permanece no suporte até ser agarrada pelo jogador
-
-        // XRGrabInteractable
-        XRGrabInteractable grab = weaponObj.AddComponent<XRGrabInteractable>();
-        grab.movementType = XRBaseInteractable.MovementType.Instantaneous;
-        grab.throwOnDetach = true;
-        grab.selectEntered.AddListener((args) =>
-        {
-            rb.isKinematic = false;
-        });
-
-        // Script de Tiro ArmaVR
-        ArmaVR armaScript = weaponObj.AddComponent<ArmaVR>();
-        armaScript.SetCanShoot(false);
-
-        // Ponto de saída do laser (Muzzle)
-        GameObject muzzle = new GameObject("PontoDisparoLaser");
-        muzzle.transform.SetParent(weaponObj.transform, false);
-        muzzle.transform.localPosition = new Vector3(0f, 0.06f, 0.32f);
-
-        physicalWeaponObj = weaponObj;
     }
 
     /// <summary>
-    /// Constrói os dois World Space Canvases com o padrão estético do cockpit.
+    /// Constrói os dois World Space Canvases de história e instruções em frente à cadeira do piloto,
+    /// posicionados acima do painel de controle para que o botão fique 100% visível e clicável.
     /// </summary>
     private void EnsureInstructionCanvases()
     {
         TMP_FontAsset font = Resources.Load<TMP_FontAsset>("Fonts & Materials/LiberationSans SDF");
 
-        Vector3 canvasPos = new Vector3(0f, 1.25f, 1.65f);
-        Quaternion canvasRot = Quaternion.Euler(12f, 0f, 0f);
+        // Posicionado acima do MainControlPanel, na altura dos olhos do jogador sentado na cadeira
+        Vector3 canvasPos = new Vector3(-0.18f, 1.85f, 1.18f);
+        Quaternion canvasRot = Quaternion.Euler(2f, 0f, 0f);
 
-        // === CANVAS 1: PROTOCOLO DE INTERCEPTAÇÃO ===
+        // === 1. AO CHEGAR À CENA DE DEFESA ===
         if (canvas1Protocolo == null)
         {
+            string msgCanvas1 =
+                "Energia restabelecida. O sistema de defesa da nave foi ativado, mas os danos causados pelo ataque dos piratas espaciais comprometeram o sistema de mira automática.\n\n" +
+                "Os sensores identificaram detritos espaciais que podem atingir a embarcação. Sem a mira automática, você precisará controlar os disparos manualmente.\n\n" +
+                "O computador de bordo fornecerá operações matemáticas para ajudar a identificar os alvos. Resolva cada operação e encontre o detrito que apresenta o resultado correto.\n\n" +
+                "Neutralize as ameaças antes que os escudos da nave se esgotem.";
+
             canvas1Protocolo = CreateInstructionCanvas(
                 "Canvas1_ProtocoloInterceptacao",
                 canvasPos,
                 canvasRot,
                 "PROTOCOLO DE INTERCEPTAÇÃO",
                 "SISTEMA DE DEFESA ATIVADO",
-                "Os sensores detectaram detritos espaciais entrando na órbita da nave.\n\n" +
-                "Os sistemas de mira foram danificados durante o ataque.\n\n" +
-                "Para localizar corretamente os detritos, o sistema utiliza operações matemáticas para representar suas coordenadas.\n\n" +
-                "Resolva a operação exibida no painel e identifique o detrito que possui o resultado correto.\n\n" +
-                "Acerte o alvo correto para proteger a nave.",
-                "Um disparo incorreto consumirá energia da nave.",
-                "ENTENDI",
+                msgCanvas1,
+                "Cuidado: disparos incorretos e impactos dos detritos reduzem a energia dos escudos.",
+                "[ ENTENDI ]",
                 OnClickEntendiProtocolo,
                 font,
                 out group1
             );
         }
 
-        // === CANVAS 2: CONTROLE DA ARMA ===
+        // === 2. INSTRUÇÕES PARA UTILIZAR A ARMA ===
         if (canvas2Arma == null)
         {
+            string msgCanvas2 =
+                "A defesa será realizada manualmente. Utilize a arma laser disponível na cabine para destruir os detritos que ameaçam a nave.\n\n" +
+                "<color=#38BDF8><b>COMO JOGAR</b></color>\n" +
+                "1. Pegue a arma utilizando o controle VR.\n" +
+                "2. Observe a operação matemática apresentada no painel.\n" +
+                "3. Resolva a operação.\n" +
+                "4. Localize o detrito identificado com o resultado correto.\n" +
+                "5. Mire no alvo e pressione o gatilho para disparar.\n" +
+                "6. Repita o processo para neutralizar as ameaças restantes.";
+
             canvas2Arma = CreateInstructionCanvas(
                 "Canvas2_ControleDaArma",
-                canvasPos + new Vector3(0f, 0.05f, 0f),
+                canvasPos,
                 canvasRot,
                 "CONTROLE DA ARMA",
                 "PREPARE-SE PARA A INTERCEPTAÇÃO",
-                "A defesa da nave será realizada manualmente.\n\n" +
-                "Pegue a arma disponível à sua frente.\n\n" +
-                "Use o controle VR para segurá-la.\n\n" +
-                "Mire nos detritos e pressione o gatilho para disparar.\n\n" +
-                "Resolva a operação matemática e atinja somente o detrito que possui a resposta correta.\n\n" +
-                "<color=#38BDF8><b>COMO JOGAR:</b></color>\n" +
-                "1. Pegue a arma.   2. Resolva a operação.   3. Localize o detrito com a resposta.\n" +
-                "4. Mire no alvo.   5. Pressione o gatilho para disparar.",
-                "ERRAR O ALVO CONSUME ENERGIA.",
-                "INICIAR DEFESA",
+                msgCanvas2,
+                "Errar o alvo ou permitir que um detrito atinja a nave reduz a energia dos escudos. Se ela chegar a zero, a missão será encerrada.",
+                "[ INICIAR DEFESA ]",
                 OnClickIniciarDefesa,
                 font,
                 out group2
@@ -303,84 +347,95 @@ public class IntroducaoDefesaVR : MonoBehaviour
 
         Canvas canvas = cObj.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.WorldSpace;
-        canvas.sortingOrder = 120;
+        canvas.sortingOrder = 150;
         canvas.worldCamera = Camera.main;
 
-        var raycasterType = System.Type.GetType("UnityEngine.XR.Interaction.Toolkit.UI.TrackedDeviceGraphicRaycaster, Unity.XR.Interaction.Toolkit");
-        if (raycasterType != null) cObj.AddComponent(raycasterType);
+        cObj.AddComponent<GraphicRaycaster>();
+        if (cObj.GetComponent<TrackedDeviceGraphicRaycaster>() == null)
+        {
+            cObj.AddComponent<TrackedDeviceGraphicRaycaster>();
+        }
 
         RectTransform rt = canvas.GetComponent<RectTransform>();
-        rt.sizeDelta = new Vector2(850f, 600f);
-        rt.localScale = new Vector3(0.0022f, 0.0022f, 0.0022f);
+        rt.sizeDelta = new Vector2(920f, 580f);
+        rt.localScale = new Vector3(0.0019f, 0.0019f, 0.0019f);
 
         group = cObj.AddComponent<CanvasGroup>();
         group.alpha = 1f;
 
-        // Fundo
+        // Fundo escuro translúcido do cockpit
         GameObject bgObj = new GameObject("Fundo");
         bgObj.transform.SetParent(cObj.transform, false);
         var bgImg = bgObj.AddComponent<Image>();
-        bgImg.color = new Color(0.03f, 0.06f, 0.15f, 0.95f);
+        bgImg.color = new Color(0.02f, 0.05f, 0.13f, 0.96f);
+        bgImg.raycastTarget = false;
         RectTransform bgRt = bgObj.GetComponent<RectTransform>();
         bgRt.anchorMin = Vector2.zero;
         bgRt.anchorMax = Vector2.one;
         bgRt.offsetMin = Vector2.zero;
         bgRt.offsetMax = Vector2.zero;
 
-        // Borda Superior
+        // Borda Superior luminosa
         GameObject borderTop = new GameObject("BordaTop");
         borderTop.transform.SetParent(cObj.transform, false);
         var bImg = borderTop.AddComponent<Image>();
-        bImg.color = new Color(0.22f, 0.74f, 0.97f, 0.85f);
+        bImg.color = new Color(0.22f, 0.74f, 0.97f, 0.9f);
+        bImg.raycastTarget = false;
         RectTransform bRt = borderTop.GetComponent<RectTransform>();
-        bRt.anchorMin = new Vector2(0.04f, 0.96f);
-        bRt.anchorMax = new Vector2(0.96f, 0.97f);
+        bRt.anchorMin = new Vector2(0.04f, 0.965f);
+        bRt.anchorMax = new Vector2(0.96f, 0.975f);
         bRt.offsetMin = Vector2.zero;
         bRt.offsetMax = Vector2.zero;
 
-        // Título e Subtítulo
+        // Título
         GameObject titleObj = new GameObject("Titulo");
         titleObj.transform.SetParent(cObj.transform, false);
         var tTxt = titleObj.AddComponent<TextMeshProUGUI>();
         if (font != null) tTxt.font = font;
-        tTxt.fontSize = 28f;
+        tTxt.fontSize = 30f;
         tTxt.fontStyle = FontStyles.Bold;
         tTxt.alignment = TextAlignmentOptions.Center;
-        tTxt.color = new Color(0.22f, 0.74f, 0.97f);
+        tTxt.color = new Color(0.22f, 0.78f, 1f);
+        tTxt.raycastTarget = false;
         tTxt.text = title;
         RectTransform tRt = titleObj.GetComponent<RectTransform>();
-        tRt.anchorMin = new Vector2(0f, 0.85f);
-        tRt.anchorMax = new Vector2(1f, 0.95f);
+        tRt.anchorMin = new Vector2(0.04f, 0.87f);
+        tRt.anchorMax = new Vector2(0.96f, 0.955f);
         tRt.offsetMin = Vector2.zero;
         tRt.offsetMax = Vector2.zero;
 
+        // Subtítulo
         GameObject subObj = new GameObject("Subtitulo");
         subObj.transform.SetParent(cObj.transform, false);
         var sTxt = subObj.AddComponent<TextMeshProUGUI>();
         if (font != null) sTxt.font = font;
-        sTxt.fontSize = 18f;
+        sTxt.fontSize = 19f;
+        sTxt.fontStyle = FontStyles.Bold;
         sTxt.alignment = TextAlignmentOptions.Center;
-        sTxt.color = new Color(0.6f, 0.85f, 1f, 0.9f);
+        sTxt.color = new Color(0.65f, 0.88f, 1f, 0.95f);
+        sTxt.raycastTarget = false;
         sTxt.text = subtitle;
         RectTransform sRt = subObj.GetComponent<RectTransform>();
-        sRt.anchorMin = new Vector2(0f, 0.78f);
-        sRt.anchorMax = new Vector2(1f, 0.85f);
+        sRt.anchorMin = new Vector2(0.04f, 0.80f);
+        sRt.anchorMax = new Vector2(0.96f, 0.87f);
         sRt.offsetMin = Vector2.zero;
         sRt.offsetMax = Vector2.zero;
 
-        // Corpo do Texto
+        // Corpo da Mensagem
         GameObject bodyObj = new GameObject("CorpoTexto");
         bodyObj.transform.SetParent(cObj.transform, false);
         var bTxt = bodyObj.AddComponent<TextMeshProUGUI>();
         if (font != null) bTxt.font = font;
-        bTxt.fontSize = 19f;
+        bTxt.fontSize = 17.5f;
+        bTxt.lineSpacing = 4f;
         bTxt.alignment = TextAlignmentOptions.Center;
         bTxt.textWrappingMode = TextWrappingModes.Normal;
         bTxt.color = Color.white;
+        bTxt.raycastTarget = false;
         bTxt.text = body;
         RectTransform bTextRt = bodyObj.GetComponent<RectTransform>();
-        bTextRt.anchorMin = new Vector2(0.06f, 0.24f);
-        bTextRt.anchorMax = new Vector2(0.94f, 0.76f);
+        bTextRt.anchorMin = new Vector2(0.06f, 0.29f);
+        bTextRt.anchorMax = new Vector2(0.94f, 0.79f);
         bTextRt.offsetMin = Vector2.zero;
         bTextRt.offsetMax = Vector2.zero;
 
@@ -389,44 +444,55 @@ public class IntroducaoDefesaVR : MonoBehaviour
         warnObj.transform.SetParent(cObj.transform, false);
         var wTxt = warnObj.AddComponent<TextMeshProUGUI>();
         if (font != null) wTxt.font = font;
-        wTxt.fontSize = 17f;
+        wTxt.fontSize = 16.5f;
         wTxt.fontStyle = FontStyles.Bold;
         wTxt.alignment = TextAlignmentOptions.Center;
-        wTxt.color = new Color(1f, 0.35f, 0.35f);
+        wTxt.textWrappingMode = TextWrappingModes.Normal;
+        wTxt.color = new Color(1f, 0.42f, 0.38f);
+        wTxt.raycastTarget = false;
         wTxt.text = warning;
         RectTransform wRt = warnObj.GetComponent<RectTransform>();
-        wRt.anchorMin = new Vector2(0f, 0.16f);
-        wRt.anchorMax = new Vector2(1f, 0.23f);
+        wRt.anchorMin = new Vector2(0.06f, 0.18f);
+        wRt.anchorMax = new Vector2(0.94f, 0.28f);
         wRt.offsetMin = Vector2.zero;
         wRt.offsetMax = Vector2.zero;
 
-        // Botão
+        // Botão de ação ([ ENTENDI ] / [ INICIAR DEFESA ]) bem destacado dentro da parte inferior do Canvas
         GameObject btnObj = new GameObject("BotaoAcao");
         btnObj.transform.SetParent(cObj.transform, false);
         RectTransform btnRt = btnObj.AddComponent<RectTransform>();
-        btnRt.anchorMin = new Vector2(0.5f, 0.5f);
-        btnRt.anchorMax = new Vector2(0.5f, 0.5f);
-        btnRt.pivot = new Vector2(0.5f, 0.5f);
-        btnRt.anchoredPosition = new Vector2(0f, -240f);
-        btnRt.sizeDelta = new Vector2(280f, 54f);
+        btnRt.anchorMin = new Vector2(0.28f, 0.045f);
+        btnRt.anchorMax = new Vector2(0.72f, 0.155f);
+        btnRt.offsetMin = Vector2.zero;
+        btnRt.offsetMax = Vector2.zero;
 
         btnObj.AddComponent<CanvasRenderer>();
         var btnImg = btnObj.AddComponent<Image>();
-        btnImg.color = new Color(0.08f, 0.35f, 0.65f, 0.92f);
+        btnImg.color = new Color(0.12f, 0.52f, 0.85f, 1f);
+        btnImg.raycastTarget = true;
 
         Button btn = btnObj.AddComponent<Button>();
         ColorBlock cb = btn.colors;
-        cb.normalColor = new Color(0.10f, 0.38f, 0.65f, 0.90f);
-        cb.highlightedColor = new Color(0.22f, 0.74f, 0.98f, 1.00f);
-        cb.pressedColor = new Color(0.06f, 0.22f, 0.40f, 1.00f);
-        cb.selectedColor = new Color(0.18f, 0.60f, 0.85f, 1.00f);
+        cb.normalColor = new Color(0.12f, 0.52f, 0.85f, 1f);
+        cb.highlightedColor = new Color(0.25f, 0.80f, 1.00f, 1.00f);
+        cb.pressedColor = new Color(0.06f, 0.28f, 0.50f, 1.00f);
+        cb.selectedColor = new Color(0.20f, 0.68f, 0.95f, 1.00f);
         btn.colors = cb;
         btn.targetGraphic = btnImg;
         btn.onClick.AddListener(buttonAction);
 
         BoxCollider col = btnObj.AddComponent<BoxCollider>();
-        col.size = new Vector3(280f, 54f, 8f);
-        col.isTrigger = true;
+        col.size = new Vector3(410f, 68f, 30f);
+        col.isTrigger = false;
+
+        // XRSimpleInteractable para permitir clique direto com o raio dos controles VR (Select / Activate)
+        XRSimpleInteractable xrInteractable = btnObj.AddComponent<XRSimpleInteractable>();
+        if (!xrInteractable.colliders.Contains(col))
+        {
+            xrInteractable.colliders.Add(col);
+        }
+        xrInteractable.selectEntered.AddListener(_ => buttonAction.Invoke());
+        xrInteractable.activated.AddListener(_ => buttonAction.Invoke());
 
         GameObject btnTxtObj = new GameObject("Text");
         btnTxtObj.transform.SetParent(btnObj.transform, false);
@@ -438,7 +504,7 @@ public class IntroducaoDefesaVR : MonoBehaviour
 
         var btnTmp = btnTxtObj.AddComponent<TextMeshProUGUI>();
         if (font != null) btnTmp.font = font;
-        btnTmp.fontSize = 22f;
+        btnTmp.fontSize = 23f;
         btnTmp.fontStyle = FontStyles.Bold;
         btnTmp.alignment = TextAlignmentOptions.Center;
         btnTmp.color = Color.white;
@@ -448,3 +514,5 @@ public class IntroducaoDefesaVR : MonoBehaviour
         return cObj;
     }
 }
+
+

@@ -103,48 +103,92 @@ public class InterfaceVR : MonoBehaviour
             }
         }
 
+        if (feedbackText != null)
+        {
+            RectTransform fbRt = feedbackText.GetComponent<RectTransform>();
+            if (fbRt != null)
+            {
+                fbRt.anchoredPosition = new Vector2(0f, 72f);
+                fbRt.sizeDelta = new Vector2(860f, 110f);
+            }
+            feedbackText.fontSize = 22f;
+            feedbackText.alignment = TextAlignmentOptions.Center;
+            feedbackText.textWrappingMode = TextWrappingModes.Normal;
+        }
+
         if (gameOverPanel == null) return;
 
         RectTransform panelRt = gameOverPanel.GetComponent<RectTransform>();
         if (panelRt != null)
         {
-            panelRt.sizeDelta = new Vector2(860f, 600f);
+            panelRt.sizeDelta = new Vector2(880f, 650f);
             panelRt.anchoredPosition = new Vector2(0f, 140f);
             panelRt.localPosition = new Vector3(0f, 140f, -60f);
             panelRt.localScale = new Vector3(0.90f, 0.90f, 1f);
         }
 
-        // 1. Título ("FIM DE JOGO")
+        // 1. Título
         Transform titleTr = gameOverPanel.transform.Find("Title");
+        TMP_FontAsset sharedFont = gameOverScoreText != null ? gameOverScoreText.font : null;
         if (titleTr != null)
         {
             RectTransform titleRt = titleTr.GetComponent<RectTransform>();
             if (titleRt != null)
             {
-                titleRt.anchoredPosition = new Vector2(0f, 230f);
-                titleRt.sizeDelta = new Vector2(760f, 70f);
+                titleRt.anchoredPosition = new Vector2(0f, 255f);
+                titleRt.sizeDelta = new Vector2(800f, 56f);
             }
             TMP_Text titleTxt = titleTr.GetComponent<TMP_Text>();
             if (titleTxt != null)
             {
-                titleTxt.fontSize = 44f;
+                titleTxt.fontSize = 38f;
                 titleTxt.fontStyle = FontStyles.Bold;
                 titleTxt.alignment = TextAlignmentOptions.Center;
+                if (sharedFont == null) sharedFont = titleTxt.font;
             }
         }
 
-        // 2. Texto de pontuação e mensagem ("FinalScore")
+        // 1b. Subtítulo ("Subtitle")
+        Transform subTr = gameOverPanel.transform.Find("Subtitle");
+        if (subTr == null)
+        {
+            GameObject subObj = new GameObject("Subtitle", typeof(RectTransform));
+            subObj.transform.SetParent(gameOverPanel.transform, false);
+            subTr = subObj.transform;
+        }
+        RectTransform subRt = subTr.GetComponent<RectTransform>();
+        if (subRt != null)
+        {
+            subRt.anchorMin = new Vector2(0.5f, 0.5f);
+            subRt.anchorMax = new Vector2(0.5f, 0.5f);
+            subRt.pivot = new Vector2(0.5f, 0.5f);
+            subRt.anchoredPosition = new Vector2(0f, 202f);
+            subRt.sizeDelta = new Vector2(800f, 40f);
+        }
+        TMP_Text subTxt = subTr.GetComponent<TMP_Text>();
+        if (subTxt == null)
+        {
+            subTxt = subTr.gameObject.AddComponent<TextMeshProUGUI>();
+        }
+        if (sharedFont != null) subTxt.font = sharedFont;
+        subTxt.fontSize = 24f;
+        subTxt.fontStyle = FontStyles.Bold;
+        subTxt.alignment = TextAlignmentOptions.Center;
+        subTxt.raycastTarget = false;
+
+        // 2. Texto de mensagem ("FinalScore")
         if (gameOverScoreText != null)
         {
             RectTransform scoreRt = gameOverScoreText.GetComponent<RectTransform>();
             if (scoreRt != null)
             {
-                scoreRt.anchoredPosition = new Vector2(0f, 60f);
-                scoreRt.sizeDelta = new Vector2(760f, 210f);
+                scoreRt.anchoredPosition = new Vector2(0f, 45f);
+                scoreRt.sizeDelta = new Vector2(780f, 235f);
             }
-            gameOverScoreText.fontSize = 25f;
-            gameOverScoreText.lineSpacing = 18f;
+            gameOverScoreText.fontSize = 23f;
+            gameOverScoreText.lineSpacing = 12f;
             gameOverScoreText.alignment = TextAlignmentOptions.Center;
+            gameOverScoreText.textWrappingMode = TextWrappingModes.Normal;
         }
 
         // 3. Botão Recomeçar ("BtnRestart")
@@ -153,31 +197,52 @@ public class InterfaceVR : MonoBehaviour
             RectTransform restartRt = btnRestart.GetComponent<RectTransform>();
             if (restartRt != null)
             {
-                restartRt.anchoredPosition = new Vector2(0f, -120f);
-                restartRt.sizeDelta = new Vector2(380f, 62f);
+                restartRt.anchoredPosition = new Vector2(0f, -145f);
+                restartRt.sizeDelta = new Vector2(420f, 62f);
             }
             BoxCollider col = btnRestart.GetComponent<BoxCollider>();
-            if (col != null)
+            if (col == null) col = btnRestart.gameObject.AddComponent<BoxCollider>();
+            col.size = new Vector3(420f, 62f, 20f);
+            col.isTrigger = false;
+
+            var xrInt = btnRestart.GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRSimpleInteractable>();
+            if (xrInt == null)
             {
-                col.size = new Vector3(380f, 62f, 20f);
+                xrInt = btnRestart.gameObject.AddComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRSimpleInteractable>();
             }
+            if (!xrInt.colliders.Contains(col)) xrInt.colliders.Add(col);
         }
 
-        // 4. Botão Voltar para a Nave ("BtnReturnShip")
+        // 4. Botão Voltar ao Início ("BtnReturnShip")
         if (btnReturnToShip != null)
         {
             RectTransform returnRt = btnReturnToShip.GetComponent<RectTransform>();
             if (returnRt != null)
             {
-                returnRt.anchoredPosition = new Vector2(0f, -215f);
-                returnRt.sizeDelta = new Vector2(380f, 62f);
+                returnRt.anchoredPosition = new Vector2(0f, -230f);
+                returnRt.sizeDelta = new Vector2(420f, 62f);
             }
             BoxCollider col = btnReturnToShip.GetComponent<BoxCollider>();
-            if (col != null)
+            if (col == null) col = btnReturnToShip.gameObject.AddComponent<BoxCollider>();
+            col.size = new Vector3(420f, 62f, 20f);
+            col.isTrigger = false;
+
+            var xrInt = btnReturnToShip.GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRSimpleInteractable>();
+            if (xrInt == null)
             {
-                col.size = new Vector3(380f, 62f, 20f);
+                xrInt = btnReturnToShip.gameObject.AddComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRSimpleInteractable>();
             }
+            if (!xrInt.colliders.Contains(col)) xrInt.colliders.Add(col);
         }
+    }
+
+    public void SetHUDRootElementsVisible(bool visible)
+    {
+        Transform mathVisorTr = transform.Find("MathVisor_Border");
+        if (mathVisorTr != null) mathVisorTr.gameObject.SetActive(visible);
+
+        Transform controlBorderTr = transform.Find("ControlPanel_Border");
+        if (controlBorderTr != null) controlBorderTr.gameObject.SetActive(visible);
     }
 
     private void SetBackgroundHUDPanelsVisible(bool visible)
@@ -195,6 +260,12 @@ public class InterfaceVR : MonoBehaviour
 
     private void Start()
     {
+        var trackedRaycaster = GetComponent<UnityEngine.XR.Interaction.Toolkit.UI.TrackedDeviceGraphicRaycaster>();
+        if (trackedRaycaster == null)
+        {
+            gameObject.AddComponent<UnityEngine.XR.Interaction.Toolkit.UI.TrackedDeviceGraphicRaycaster>();
+        }
+
         if (btnConsoleNewRound != null)
         {
             btnConsoleNewRound.onClick.AddListener(() =>
@@ -217,23 +288,39 @@ public class InterfaceVR : MonoBehaviour
 
         if (btnRestart != null)
         {
-            btnRestart.onClick.AddListener(() =>
+            UnityEngine.Events.UnityAction restartAction = () =>
             {
                 if (GerenteSom.Instance != null) GerenteSom.Instance.PlayClick();
                 GerenteDefesa def = GerenteDefesa.Instance != null ? GerenteDefesa.Instance : FindAnyObjectByType<GerenteDefesa>();
                 if (def != null) def.RestartDefense();
-            });
+            };
+            btnRestart.onClick.AddListener(restartAction);
+
+            var xrInt = btnRestart.GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRSimpleInteractable>();
+            if (xrInt != null)
+            {
+                xrInt.selectEntered.AddListener(_ => restartAction());
+                xrInt.activated.AddListener(_ => restartAction());
+            }
         }
 
         if (btnReturnToShip != null)
         {
-            btnReturnToShip.onClick.AddListener(() =>
+            UnityEngine.Events.UnityAction returnAction = () =>
             {
                 if (GerenteSom.Instance != null) GerenteSom.Instance.PlayClick();
                 GerenteDefesa def = GerenteDefesa.Instance != null ? GerenteDefesa.Instance : FindAnyObjectByType<GerenteDefesa>();
                 if (def != null) def.ReturnToShip();
                 else UnityEngine.SceneManagement.SceneManager.LoadScene("SampleScene");
-            });
+            };
+            btnReturnToShip.onClick.AddListener(returnAction);
+
+            var xrInt = btnReturnToShip.GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRSimpleInteractable>();
+            if (xrInt != null)
+            {
+                xrInt.selectEntered.AddListener(_ => returnAction());
+                xrInt.activated.AddListener(_ => returnAction());
+            }
         }
 
         if (GerentePontuacao.Instance != null)
@@ -318,21 +405,92 @@ public class InterfaceVR : MonoBehaviour
 
     public void ShowFeedback(bool isCorrect, string message)
     {
-        if (feedbackText == null) return;
-
-        if (feedbackRoutine != null) StopCoroutine(feedbackRoutine);
-        feedbackRoutine = StartCoroutine(FeedbackRoutine(isCorrect, message));
+        if (feedbackRoutine != null)
+        {
+            StopCoroutine(feedbackRoutine);
+            feedbackRoutine = null;
+        }
+        if (feedbackText != null)
+        {
+            feedbackText.gameObject.SetActive(false);
+        }
     }
 
-    private IEnumerator FeedbackRoutine(bool isCorrect, string message)
+    private void SetEndScreenTexts(
+        string title,
+        Color titleColor,
+        string subtitle,
+        Color subtitleColor,
+        string message,
+        string restartBtnLabel,
+        string returnBtnLabel)
     {
-        feedbackText.text = message;
-        feedbackText.color = isCorrect ? new Color(0.2f, 1f, 0.4f, 1f) : new Color(1f, 0.25f, 0.25f, 1f);
-        feedbackText.gameObject.SetActive(true);
+        if (gameOverPanel == null) return;
 
-        yield return new WaitForSeconds(1.3f);
+        Transform titleTr = gameOverPanel.transform.Find("Title");
+        if (titleTr != null)
+        {
+            TMP_Text titleTxt = titleTr.GetComponent<TMP_Text>();
+            if (titleTxt != null)
+            {
+                titleTxt.text = title;
+                titleTxt.color = titleColor;
+            }
+        }
 
-        feedbackText.gameObject.SetActive(false);
+        Transform subTr = gameOverPanel.transform.Find("Subtitle");
+        if (subTr != null)
+        {
+            TMP_Text subTxt = subTr.GetComponent<TMP_Text>();
+            if (subTxt != null)
+            {
+                subTxt.text = subtitle;
+                subTxt.color = subtitleColor;
+            }
+        }
+
+        if (gameOverScoreText != null)
+        {
+            gameOverScoreText.text = message;
+            gameOverScoreText.color = new Color(0.92f, 0.96f, 1f, 1f);
+        }
+
+        if (btnRestart != null)
+        {
+            TMP_Text restartTxt = btnRestart.GetComponentInChildren<TMP_Text>(true);
+            if (restartTxt != null) restartTxt.text = restartBtnLabel;
+        }
+
+        if (btnReturnToShip != null)
+        {
+            TMP_Text returnTxt = btnReturnToShip.GetComponentInChildren<TMP_Text>(true);
+            if (returnTxt != null) returnTxt.text = returnBtnLabel;
+        }
+    }
+
+    public void ShowVictory(int finalScore = 0, int correct = 0, int wrong = 0, float accuracy = 0f, int rounds = 1)
+    {
+        if (gameOverPanel != null)
+        {
+            if (feedbackText != null) feedbackText.gameObject.SetActive(false);
+            ConfigureGameOverLayout();
+            SetBackgroundHUDPanelsVisible(false);
+
+            SetEndScreenTexts(
+                "DEFESA BEM-SUCEDIDA",
+                new Color(0.25f, 1f, 0.55f, 1f),
+                "ROTA SEGURA",
+                new Color(0.35f, 0.9f, 1f, 1f),
+                "Todos os detritos previstos para esta interceptação foram neutralizados.\n" +
+                "A nave está protegida e a rota foi liberada. Mesmo após o ataque dos piratas espaciais, você conseguiu restaurar a energia e defender a embarcação.\n" +
+                "Graças à sua atenção e aos seus cálculos, a jornada pode continuar.\n" +
+                "Missão concluída. Boa viagem, viajante!",
+                "[ JOGAR NOVAMENTE ]",
+                "[ VOLTAR AO INÍCIO ]"
+            );
+
+            gameOverPanel.SetActive(true);
+        }
     }
 
     public void ShowGameOver(int finalScore)
@@ -344,16 +502,22 @@ public class InterfaceVR : MonoBehaviour
     {
         if (gameOverPanel != null)
         {
+            if (feedbackText != null) feedbackText.gameObject.SetActive(false);
             ConfigureGameOverLayout();
             SetBackgroundHUDPanelsVisible(false);
 
-            if (gameOverScoreText != null)
-            {
-                gameOverScoreText.text =
-                    $"<color=#FF5555><b>ENERGIA DA NAVE ESGOTADA!</b></color>\n\n" +
-                    $"Pontuação: <b>{finalScore}</b>     |     Acertos: <b>{correct}</b>     |     Erros: <b>{wrong}</b>\n\n" +
-                    $"Deseja <b>recomeçar a defesa</b> ou <b>voltar para a nave</b>?";
-            }
+            SetEndScreenTexts(
+                "NAVE DESTRUÍDA",
+                new Color(1f, 0.3f, 0.3f, 1f),
+                "OS ESCUDOS FALHARAM",
+                new Color(1f, 0.78f, 0.25f, 1f),
+                "Os impactos dos detritos comprometeram os escudos da nave, e a energia chegou a zero.\n" +
+                "A missão de defesa falhou. A embarcação não conseguiu resistir aos danos.\n" +
+                "Você pode tentar novamente, resolver as operações com atenção e neutralizar os alvos antes que seja tarde demais.",
+                "[ TENTAR NOVAMENTE ]",
+                "[ VOLTAR AO INÍCIO ]"
+            );
+
             gameOverPanel.SetActive(true);
         }
     }
