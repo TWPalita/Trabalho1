@@ -23,14 +23,48 @@ public class GerenteAlarme : MonoBehaviour
     [SerializeField] private float explorationDelay = 5.0f;
 
     [Header("Textos do Diário de Bordo")]
-    [TextArea(2, 4)]
-    [SerializeField] private string storyMessage1 = "Você é um viajante espacial em uma longa jornada pela galáxia.";
+    [SerializeField] private string diaryTitle = "DIÁRIO DE BORDO";
 
     [TextArea(2, 4)]
-    [SerializeField] private string storyMessage2 = "Depois de dias de viagem, sua nave segue tranquilamente pelo espaço.";
+    [SerializeField] private string storyMessage1 = "Você está a bordo de uma nave espacial em uma longa jornada pela galáxia. Sua missão é atravessar regiões desconhecidas do espaço e chegar ao seu próximo destino.";
 
     [TextArea(2, 4)]
-    [SerializeField] private string storyMessage3 = "Explore a nave e prepare-se para continuar sua jornada.";
+    [SerializeField] private string storyMessage2 = "Durante a viagem, a nave foi atacada por piratas espaciais. Embora você tenha conseguido sobreviver, alguns sistemas foram danificados e o funcionamento da embarcação ficou comprometido.";
+
+    [TextArea(2, 4)]
+    [SerializeField] private string storyMessage3 = "Após o incidente, você desperta em seu quarto. É necessário verificar o estado da nave antes de continuar a viagem. Explore os compartimentos e procure descobrir quais sistemas precisam ser restaurados.";
+
+    [Header("Textos do Painel Sem Energia (Etapa 3)")]
+    [SerializeField] private string panelUnavailableTitle = "SISTEMA INDISPONÍVEL";
+
+    [TextArea(3, 6)]
+    [SerializeField] private string panelUnavailableMessage = "O painel de controle está sem energia e não pode ativar o sistema de defesa. Os danos causados pelo ataque podem ter comprometido o fornecimento de energia da nave.\nVerifique o gerador auxiliar. Ele precisa de combustível para voltar a funcionar e restabelecer a energia dos sistemas.";
+
+    [SerializeField] private string panelBlockedTitle = "ACESSO BLOQUEADO";
+
+    [TextArea(2, 4)]
+    [SerializeField] private string panelBlockedMessage = "O painel ainda está sem energia. Abasteça o gerador auxiliar e restaure o fornecimento de energia antes de ativar o sistema de defesa.";
+
+    [Header("Textos do Gerador e Combustível (Etapas 4, 5 e 6)")]
+    [SerializeField] private string generatorEmptyTitle = "GERADOR AUXILIAR";
+
+    [TextArea(3, 6)]
+    [SerializeField] private string generatorEmptyMessage = "Você encontrou o gerador responsável por fornecer energia aos sistemas auxiliares da nave. O equipamento está sem combustível e não pode ser iniciado.\nEncontre o galão de combustível, leve-o até o gerador e abasteça o reservatório.";
+
+    [SerializeField] private string fuelCollectedTitle = "COMBUSTÍVEL COLETADO";
+
+    [TextArea(2, 4)]
+    [SerializeField] private string fuelCollectedMessage = "O galão está com você. Leve-o até o gerador auxiliar para abastecer o reservatório e permitir que o equipamento volte a funcionar.";
+
+    [SerializeField] private string refuelingCompleteTitle = "ABASTECIMENTO CONCLUÍDO";
+
+    [TextArea(2, 4)]
+    [SerializeField] private string refuelingCompleteMessage = "O combustível foi colocado no reservatório. Agora, acione o botão de ignição para reiniciar o gerador e restabelecer o fornecimento de energia.";
+
+    [SerializeField] private string energyRestoredTitle = "ENERGIA RESTAURADA";
+
+    [TextArea(3, 6)]
+    [SerializeField] private string energyRestoredMessage = "O gerador auxiliar voltou a funcionar e o fornecimento de energia foi restabelecido.\nOs sistemas da nave estão reiniciando. Entretanto, os sensores detectaram detritos espaciais em rota de colisão.\nRetorne ao painel de controle para ativar o sistema de defesa antes que os detritos atinjam a nave.";
 
     [Header("Textos do Alerta de Emergência")]
     [Tooltip("Tempo em segundos que o alerta de emergência fica visível antes de mostrar o objetivo")]
@@ -55,7 +89,7 @@ public class GerenteAlarme : MonoBehaviour
     [Header("Posicionamento Fixo do Objetivo (World Space)")]
     [Tooltip("Canvas opcional dedicado para o objetivo (se não atribuído, utiliza narrativeCanvasObject)")]
     [SerializeField] private GameObject objectiveCanvasObject;
-    [SerializeField] private Vector3 fixedObjectivePosition = new Vector3(-8.710000038146973f, 1.5439398288726807f, -1.4135463237762452f);
+    [SerializeField] private Vector3 fixedObjectivePosition = new Vector3(-8.4399995803833f, 1.4908255338668824f, -1.3852607011795045f);
     [SerializeField] private Vector3 fixedObjectiveRotation = new Vector3(0f, 180f, 0f);
 
     [Header("Interface Holográfica em World Space (VR)")]
@@ -74,19 +108,23 @@ public class GerenteAlarme : MonoBehaviour
 
     [Header("Textos dos Botões (Editáveis no Inspector)")]
     [Tooltip("Texto do botão Avançar nas páginas 1 e 2")]
-    [SerializeField] private string textoBotaoAvancar = "Avançar";
+    [SerializeField] private string textoBotaoAvancar = "AVANÇAR";
 
     [Tooltip("Texto do botão Voltar nas páginas 2 e 3")]
-    [SerializeField] private string textoBotaoVoltar = "Voltar";
+    [SerializeField] private string textoBotaoVoltar = "VOLTAR";
 
     [Tooltip("Texto do botão na página 3 para iniciar a exploração")]
-    [SerializeField] private string textoBotaoConcluir = "Explorar Nave";
+    [SerializeField] private string textoBotaoConcluir = "INICIAR EXPLORAÇÃO";
 
     [Tooltip("Texto do botão durante o alerta de emergência para fechar o canvas")]
     [SerializeField] private string textoBotaoAlerta = "ENTENDIDO";
 
     private bool isAlarmActive = false;
+    private bool isGeneratorPowered = false;
     private bool isReadingDiary = true;
+    private bool isShowingPanelNotice = false;
+    private bool hasShownPanelUnavailable = false;
+    private float lastPanelNoticeTime = -10f;
     private int currentStoryPage = 0;
     private Coroutine emergencyRoutine;
     private Coroutine transitionRoutine;
@@ -97,6 +135,14 @@ public class GerenteAlarme : MonoBehaviour
     private bool isTransitioningPage = false;
     private bool wasPrimaryButtonPressed = false;
 
+    public bool IsAlarmActive => isAlarmActive;
+    public bool IsGeneratorPowered => isGeneratorPowered;
+
+    private void OnValidate()
+    {
+        MigrateDefaultTextsIfNeeded();
+    }
+
     private void Awake()
     {
         if (Instance == null) Instance = this;
@@ -106,9 +152,73 @@ public class GerenteAlarme : MonoBehaviour
             return;
         }
 
+        MigrateDefaultTextsIfNeeded();
         EnsureEmergencyLightsController();
         EnsureWorldSpaceUI();
         EnsureButtonsUI();
+    }
+
+    private void MigrateDefaultTextsIfNeeded()
+    {
+        if (string.IsNullOrEmpty(diaryTitle))
+            diaryTitle = "DIÁRIO DE BORDO";
+
+        if (string.IsNullOrEmpty(storyMessage1) || storyMessage1.Contains("viajante espacial"))
+            storyMessage1 = "Você está a bordo de uma nave espacial em uma longa jornada pela galáxia. Sua missão é atravessar regiões desconhecidas do espaço e chegar ao seu próximo destino.";
+
+        if (string.IsNullOrEmpty(storyMessage2) || storyMessage2.Contains("segue tranquilamente"))
+            storyMessage2 = "Durante a viagem, a nave foi atacada por piratas espaciais. Embora você tenha conseguido sobreviver, alguns sistemas foram danificados e o funcionamento da embarcação ficou comprometido.";
+
+        if (string.IsNullOrEmpty(storyMessage3) || storyMessage3.Contains("prepare-se para continuar"))
+            storyMessage3 = "Após o incidente, você desperta em seu quarto. É necessário verificar o estado da nave antes de continuar a viagem. Explore os compartimentos e procure descobrir quais sistemas precisam ser restaurados.";
+
+        if (string.IsNullOrEmpty(panelUnavailableTitle))
+            panelUnavailableTitle = "SISTEMA INDISPONÍVEL";
+
+        if (string.IsNullOrEmpty(panelUnavailableMessage))
+            panelUnavailableMessage = "O painel de controle está sem energia e não pode ativar o sistema de defesa. Os danos causados pelo ataque podem ter comprometido o fornecimento de energia da nave.\nVerifique o gerador auxiliar. Ele precisa de combustível para voltar a funcionar e restabelecer a energia dos sistemas.";
+
+        if (string.IsNullOrEmpty(panelBlockedTitle))
+            panelBlockedTitle = "ACESSO BLOQUEADO";
+
+        if (string.IsNullOrEmpty(panelBlockedMessage))
+            panelBlockedMessage = "O painel ainda está sem energia. Abasteça o gerador auxiliar e restaure o fornecimento de energia antes de ativar o sistema de defesa.";
+
+        if (string.IsNullOrEmpty(generatorEmptyTitle))
+            generatorEmptyTitle = "GERADOR AUXILIAR";
+
+        if (string.IsNullOrEmpty(generatorEmptyMessage))
+            generatorEmptyMessage = "Você encontrou o gerador responsável por fornecer energia aos sistemas auxiliares da nave. O equipamento está sem combustível e não pode ser iniciado.\nEncontre o galão de combustível, leve-o até o gerador e abasteça o reservatório.";
+
+        if (string.IsNullOrEmpty(fuelCollectedTitle))
+            fuelCollectedTitle = "COMBUSTÍVEL COLETADO";
+
+        if (string.IsNullOrEmpty(fuelCollectedMessage))
+            fuelCollectedMessage = "O galão está com você. Leve-o até o gerador auxiliar para abastecer o reservatório e permitir que o equipamento volte a funcionar.";
+
+        if (string.IsNullOrEmpty(refuelingCompleteTitle))
+            refuelingCompleteTitle = "ABASTECIMENTO CONCLUÍDO";
+
+        if (string.IsNullOrEmpty(refuelingCompleteMessage))
+            refuelingCompleteMessage = "O combustível foi colocado no reservatório. Agora, acione o botão de ignição para reiniciar o gerador e restabelecer o fornecimento de energia.";
+
+        if (string.IsNullOrEmpty(energyRestoredTitle))
+            energyRestoredTitle = "ENERGIA RESTAURADA";
+
+        if (string.IsNullOrEmpty(energyRestoredMessage))
+            energyRestoredMessage = "O gerador auxiliar voltou a funcionar e o fornecimento de energia foi restabelecido.\nOs sistemas da nave estão reiniciando. Entretanto, os sensores detectaram detritos espaciais em rota de colisão.\nRetorne ao painel de controle para ativar o sistema de defesa antes que os detritos atinjam a nave.";
+
+        if (string.IsNullOrEmpty(textoBotaoAvancar) || textoBotaoAvancar == "Avançar")
+            textoBotaoAvancar = "AVANÇAR";
+
+        if (string.IsNullOrEmpty(textoBotaoVoltar) || textoBotaoVoltar == "Voltar")
+            textoBotaoVoltar = "VOLTAR";
+
+        if (string.IsNullOrEmpty(textoBotaoConcluir) || textoBotaoConcluir == "Explorar Nave")
+            textoBotaoConcluir = "INICIAR EXPLORAÇÃO";
+
+        if (string.IsNullOrEmpty(textoBotaoAlerta))
+            textoBotaoAlerta = "ENTENDIDO";
     }
 
     private void EnsureEmergencyLightsController()
@@ -666,15 +776,16 @@ public class GerenteAlarme : MonoBehaviour
                 break;
 
             case 2:
-                message =
-                    $"<color=#6EE7B7>{storyMessage3}</color>";
+                message = storyMessage3;
                 break;
         }
 
+        string headerTitle = string.IsNullOrEmpty(diaryTitle) ? "DIÁRIO DE BORDO" : diaryTitle;
+
         SetMessageText(
-            "<size=85%><color=#38BDF8><b>DIÁRIO DE BORDO</b></color></size>\n\n" +
-            $"{message}\n\n" +
-            $"<size=65%><color=#94A3B8>[ {currentStoryPage + 1} / 3 ]</color></size>"
+            $"<size=85%><color=#38BDF8><b>{headerTitle}</b></color></size>\n\n\n\n" +
+            $"<size=80%>{message}</size>\n\n" +
+            $"<size=60%><color=#94A3B8>[ {currentStoryPage + 1} / 3 ]</color></size>"
         );
 
         if (btnVoltar != null)
@@ -691,6 +802,18 @@ public class GerenteAlarme : MonoBehaviour
         {
             btnAvancar.gameObject.SetActive(true);
 
+            RectTransform btnRt = btnAvancar.GetComponent<RectTransform>();
+            if (btnRt != null)
+            {
+                btnRt.anchoredPosition = new Vector2(190f, -135f);
+                if (btnRt.sizeDelta.x < 280f)
+                {
+                    btnRt.sizeDelta = new Vector2(280f, btnRt.sizeDelta.y);
+                    BoxCollider col = btnAvancar.GetComponent<BoxCollider>();
+                    if (col != null) col.size = new Vector3(280f, col.size.y, col.size.z);
+                }
+            }
+
             SetButtonListener(btnAvancar, AvancarPagina);
 
             if (txtBtnAvancar != null)
@@ -704,7 +827,7 @@ public class GerenteAlarme : MonoBehaviour
     }
 
     /// <summary>
-    /// Chamado ao clicar no botão final 'Explorar Nave' da página 3.
+    /// Chamado ao clicar no botão final 'INICIAR EXPLORAÇÃO' da página 3.
     /// </summary>
     public void ConcluirDiarioEIniciarExploracao()
     {
@@ -729,13 +852,6 @@ public class GerenteAlarme : MonoBehaviour
         if (btnVoltar != null)
             btnVoltar.gameObject.SetActive(false);
 
-        SetMessageText(
-            "<size=90%><color=#38BDF8><b>DIÁRIO CONCLUÍDO</b></color></size>\n\n" +
-            "<color=#6EE7B7>Boa jornada, viajante. Explore o corredor da nave.</color>"
-        );
-
-        yield return new WaitForSeconds(1.2f);
-
         yield return StartCoroutine(
             FadeCanvasGroup(0f, 0.35f)
         );
@@ -748,6 +864,303 @@ public class GerenteAlarme : MonoBehaviour
         Debug.Log(
             "[GerenteAlarme] Diário concluído. Exploração livre iniciada."
         );
+    }
+
+    /// <summary>
+    /// Exibe o aviso de painel sem energia quando o jogador tenta acionar o botão físico na CabinePiloto antes de ligar o gerador.
+    /// Na primeira tentativa mostra "SISTEMA INDISPONÍVEL"; nas seguintes mostra "ACESSO BLOQUEADO".
+    /// </summary>
+    public void MostrarAvisoPainelSemEnergia()
+    {
+        if (isGeneratorPowered || isAlarmActive)
+            return;
+
+        if (Time.unscaledTime - lastPanelNoticeTime < 0.5f)
+            return;
+
+        lastPanelNoticeTime = Time.unscaledTime;
+        isReadingDiary = false;
+        isShowingPanelNotice = true;
+
+        if (narrativeCanvasObject == null)
+        {
+            EnsureWorldSpaceUI();
+            EnsureButtonsUI();
+        }
+
+        if (narrativeCanvasObject == null)
+            return;
+
+        bool isFirstTime = !hasShownPanelUnavailable;
+        hasShownPanelUnavailable = true;
+
+        string title = isFirstTime
+            ? (string.IsNullOrEmpty(panelUnavailableTitle) ? "SISTEMA INDISPONÍVEL" : panelUnavailableTitle)
+            : (string.IsNullOrEmpty(panelBlockedTitle) ? "ACESSO BLOQUEADO" : panelBlockedTitle);
+
+        string body = isFirstTime
+            ? panelUnavailableMessage
+            : panelBlockedMessage;
+
+        SetHologramTheme(true);
+        AlignHologramWithPlayer();
+        narrativeCanvasObject.SetActive(true);
+
+        if (isFirstTime)
+        {
+            SetMessageText(
+                $"<size=85%><color=#F87171><b>{title}</b></color></size>\n\n\n\n" +
+                $"<size=72%>{body}</size>\n"
+            );
+        }
+        else
+        {
+            SetMessageText(
+                $"<size=85%><color=#F87171><b>{title}</b></color></size>\n\n\n\n\n" +
+                $"<size=80%>{body}</size>\n\n\n"
+            );
+        }
+
+        if (btnVoltar != null)
+            btnVoltar.gameObject.SetActive(false);
+
+        if (btnAvancar != null)
+        {
+            btnAvancar.gameObject.SetActive(true);
+
+            RectTransform btnRt = btnAvancar.GetComponent<RectTransform>();
+            if (btnRt != null)
+            {
+                btnRt.anchoredPosition = new Vector2(0f, -135f);
+                if (btnRt.sizeDelta.x < 240f)
+                {
+                    btnRt.sizeDelta = new Vector2(240f, btnRt.sizeDelta.y);
+                    BoxCollider col = btnAvancar.GetComponent<BoxCollider>();
+                    if (col != null) col.size = new Vector3(240f, col.size.y, col.size.z);
+                }
+            }
+
+            if (txtBtnAvancar != null)
+                txtBtnAvancar.text = string.IsNullOrEmpty(textoBotaoAlerta) ? "ENTENDIDO" : textoBotaoAlerta;
+
+            SetButtonListener(btnAvancar, FecharAvisoPainel);
+        }
+
+        if (transitionRoutine != null)
+            StopCoroutine(transitionRoutine);
+
+        if (narrativeCanvasGroup != null)
+            narrativeCanvasGroup.alpha = 0f;
+
+        transitionRoutine = StartCoroutine(FadeCanvasGroup(1f, 0.25f));
+    }
+
+    /// <summary>
+    /// Exibe a mensagem da Etapa 4 ("GERADOR AUXILIAR") quando o jogador aperta o botão do gerador sem combustível.
+    /// </summary>
+    public void MostrarAvisoGeradorSemCombustivel()
+    {
+        if (isGeneratorPowered || isAlarmActive)
+            return;
+
+        if (Time.unscaledTime - lastPanelNoticeTime < 0.5f)
+            return;
+
+        lastPanelNoticeTime = Time.unscaledTime;
+        isReadingDiary = false;
+        isShowingPanelNotice = true;
+
+        if (narrativeCanvasObject == null)
+        {
+            EnsureWorldSpaceUI();
+            EnsureButtonsUI();
+        }
+
+        if (narrativeCanvasObject == null)
+            return;
+
+        string title = string.IsNullOrEmpty(generatorEmptyTitle) ? "GERADOR AUXILIAR" : generatorEmptyTitle;
+        string body = generatorEmptyMessage;
+
+        SetHologramTheme(true);
+        narrativeCanvasObject.transform.position = new Vector3(-8.4399995803833f, 1.4908255338668824f, -1.3852607011795045f);
+        narrativeCanvasObject.transform.rotation = new Quaternion(0.0f, -1.0f, 0.0f, 0.0f);
+        narrativeCanvasObject.transform.localScale = new Vector3(0.0024999999441206457f, 0.0024999999441206457f, 0.0024999999441206457f);
+        narrativeCanvasObject.SetActive(true);
+
+        SetMessageText(
+            $"<size=85%><color=#F87171><b>{title}</b></color></size>\n\n\n\n\n" +
+            $"<size=72%>{body}</size>\n\n"
+        );
+
+        if (btnVoltar != null)
+            btnVoltar.gameObject.SetActive(false);
+
+        if (btnAvancar != null)
+        {
+            btnAvancar.gameObject.SetActive(true);
+
+            RectTransform btnRt = btnAvancar.GetComponent<RectTransform>();
+            if (btnRt != null)
+            {
+                btnRt.anchoredPosition = new Vector2(0f, -135f);
+                if (btnRt.sizeDelta.x < 240f)
+                {
+                    btnRt.sizeDelta = new Vector2(240f, btnRt.sizeDelta.y);
+                    BoxCollider col = btnAvancar.GetComponent<BoxCollider>();
+                    if (col != null) col.size = new Vector3(240f, col.size.y, col.size.z);
+                }
+            }
+
+            if (txtBtnAvancar != null)
+                txtBtnAvancar.text = string.IsNullOrEmpty(textoBotaoAlerta) ? "ENTENDIDO" : textoBotaoAlerta;
+
+            SetButtonListener(btnAvancar, FecharAvisoPainel);
+        }
+
+        if (transitionRoutine != null)
+            StopCoroutine(transitionRoutine);
+
+        if (narrativeCanvasGroup != null)
+            narrativeCanvasGroup.alpha = 0f;
+
+        transitionRoutine = StartCoroutine(FadeCanvasGroup(1f, 0.25f));
+    }
+
+    /// <summary>
+    /// Exibe a mensagem da Etapa 5 ("COMBUSTÍVEL COLETADO") quando o jogador pega o galão de combustível.
+    /// </summary>
+    public void MostrarAvisoCombustivelColetado()
+    {
+        if (isGeneratorPowered || isAlarmActive)
+            return;
+
+        lastPanelNoticeTime = Time.unscaledTime;
+        isReadingDiary = false;
+        isShowingPanelNotice = true;
+
+        if (narrativeCanvasObject == null)
+        {
+            EnsureWorldSpaceUI();
+            EnsureButtonsUI();
+        }
+
+        if (narrativeCanvasObject == null)
+            return;
+
+        string title = string.IsNullOrEmpty(fuelCollectedTitle) ? "COMBUSTÍVEL COLETADO" : fuelCollectedTitle;
+        string body = fuelCollectedMessage;
+
+        SetHologramTheme(false);
+        AlignHologramWithPlayer();
+        narrativeCanvasObject.transform.localScale = new Vector3(0.0024999999441206457f, 0.0024999999441206457f, 0.0024999999441206457f);
+        narrativeCanvasObject.SetActive(true);
+
+        SetMessageText(
+            $"<size=85%><color=#38BDF8><b>{title}</b></color></size>\n\n\n\n\n" +
+            $"<size=80%>{body}</size>\n\n\n"
+        );
+
+        if (btnVoltar != null)
+            btnVoltar.gameObject.SetActive(false);
+
+        if (btnAvancar != null)
+        {
+            btnAvancar.gameObject.SetActive(true);
+
+            RectTransform btnRt = btnAvancar.GetComponent<RectTransform>();
+            if (btnRt != null)
+            {
+                btnRt.anchoredPosition = new Vector2(0f, -135f);
+                if (btnRt.sizeDelta.x < 240f)
+                {
+                    btnRt.sizeDelta = new Vector2(240f, btnRt.sizeDelta.y);
+                    BoxCollider col = btnAvancar.GetComponent<BoxCollider>();
+                    if (col != null) col.size = new Vector3(240f, col.size.y, col.size.z);
+                }
+            }
+
+            if (txtBtnAvancar != null)
+                txtBtnAvancar.text = string.IsNullOrEmpty(textoBotaoAlerta) ? "ENTENDIDO" : textoBotaoAlerta;
+
+            SetButtonListener(btnAvancar, FecharAvisoPainel);
+        }
+
+        if (transitionRoutine != null)
+            StopCoroutine(transitionRoutine);
+
+        if (narrativeCanvasGroup != null)
+            narrativeCanvasGroup.alpha = 0f;
+
+        transitionRoutine = StartCoroutine(FadeCanvasGroup(1f, 0.25f));
+    }
+
+    /// <summary>
+    /// Exibe a mensagem da Etapa 6 ("ABASTECIMENTO CONCLUÍDO") na posição do gerador quando o combustível é colocado.
+    /// </summary>
+    public void MostrarAvisoAbastecimentoConcluido()
+    {
+        if (isGeneratorPowered || isAlarmActive)
+            return;
+
+        lastPanelNoticeTime = Time.unscaledTime;
+        isReadingDiary = false;
+        isShowingPanelNotice = false;
+
+        if (narrativeCanvasObject == null)
+        {
+            EnsureWorldSpaceUI();
+            EnsureButtonsUI();
+        }
+
+        if (narrativeCanvasObject == null)
+            return;
+
+        string title = string.IsNullOrEmpty(refuelingCompleteTitle) ? "ABASTECIMENTO CONCLUÍDO" : refuelingCompleteTitle;
+        string body = refuelingCompleteMessage;
+
+        SetHologramTheme(false);
+        narrativeCanvasObject.transform.position = new Vector3(-8.4399995803833f, 1.4908255338668824f, -1.3852607011795045f);
+        narrativeCanvasObject.transform.rotation = new Quaternion(0.0f, -1.0f, 0.0f, 0.0f);
+        narrativeCanvasObject.transform.localScale = new Vector3(0.0024999999441206457f, 0.0024999999441206457f, 0.0024999999441206457f);
+        narrativeCanvasObject.SetActive(true);
+
+        SetMessageText(
+            $"<size=85%><color=#38BDF8><b>{title}</b></color></size>\n\n\n\n\n" +
+            $"<size=80%>{body}</size>\n\n\n"
+        );
+
+        if (btnVoltar != null)
+            btnVoltar.gameObject.SetActive(false);
+
+        if (btnAvancar != null)
+            btnAvancar.gameObject.SetActive(false);
+
+        if (transitionRoutine != null)
+            StopCoroutine(transitionRoutine);
+
+        if (narrativeCanvasGroup != null)
+            narrativeCanvasGroup.alpha = 0f;
+
+        transitionRoutine = StartCoroutine(FadeCanvasGroup(1f, 0.25f));
+    }
+
+    public void FecharAvisoPainel()
+    {
+        if (!isShowingPanelNotice)
+            return;
+
+        isShowingPanelNotice = false;
+
+        if (GerenteSom.Instance != null)
+        {
+            GerenteSom.Instance.PlayClick();
+        }
+
+        if (transitionRoutine != null)
+            StopCoroutine(transitionRoutine);
+
+        transitionRoutine = StartCoroutine(DismissHologramRoutine());
     }
 
     private void SetMessageText(string text)
@@ -797,18 +1210,13 @@ public class GerenteAlarme : MonoBehaviour
             }
         }
         else if (
-            isAlarmActive &&
+            isShowingPanelNotice &&
             narrativeCanvasObject != null &&
             narrativeCanvasObject.activeSelf)
         {
             if (CheckAdvanceInput())
             {
-                if (GerenteSom.Instance != null)
-                    GerenteSom.Instance.PlayClick();
-
-                StartCoroutine(
-                    DismissHologramRoutine()
-                );
+                FecharAvisoPainel();
             }
         }
     }
@@ -865,6 +1273,9 @@ public class GerenteAlarme : MonoBehaviour
 
     public void IniciarContagemAlerta()
     {
+        isGeneratorPowered = true;
+        isShowingPanelNotice = false;
+
         if (emergencyRoutine != null)
         {
             StopCoroutine(emergencyRoutine);
@@ -883,6 +1294,9 @@ public class GerenteAlarme : MonoBehaviour
 
     public void TriggerAlarm()
     {
+        isGeneratorPowered = true;
+        isShowingPanelNotice = false;
+
         if (isAlarmActive)
             return;
 
@@ -903,62 +1317,8 @@ public class GerenteAlarme : MonoBehaviour
 
     private IEnumerator EmergencySequenceRoutine()
     {
-        // 1. Objetivo do jogador descomentado (exibido na posição fixa especificada no espaço 3D)
-        GameObject objCanvas = GetObjectiveCanvasObject();
-        if (showWorldSpaceNarrativeUI && objCanvas != null)
-        {
-            PositionObjectiveCanvas();
-            SetHologramTheme(true);
-
-            objCanvas.SetActive(true);
-
-            CanvasGroup cg = objCanvas.GetComponent<CanvasGroup>();
-            if (cg == null) cg = narrativeCanvasGroup;
-            if (cg != null) cg.alpha = 0f;
-
-            TMP_Text txt = objCanvas.GetComponentInChildren<TMP_Text>();
-            if (txt == null) txt = narrativeText;
-            if (txt != null)
-            {
-                txt.text =
-                    $"<size=125%><color=#FCD34D><b>{objectiveTitle}</b></color></size>\n\n" +
-                    $"<size=110%><color=#FFFFFF><b>{objectiveMessage}</b></color></size>\n\n" +
-                    $"<size=75%><color=#94A3B8>{objectiveHint}</color></size>";
-            }
-
-            if (btnVoltar != null)
-                btnVoltar.gameObject.SetActive(false);
-
-            if (btnAvancar != null)
-                btnAvancar.gameObject.SetActive(false);
-
-            // No momento em que o objetivo aparece, a música e as luzes iniciam juntas!
-            if (GerenteSom.Instance != null)
-            {
-                GerenteSom.Instance.StartAlarm();
-            }
-
-            if (emergencyLightsController != null)
-            {
-                emergencyLightsController.StartEmergencyLights();
-            }
-
-            yield return StartCoroutine(
-                FadeCanvasGroup(1f, 0.35f)
-            );
-        }
-        else
-        {
-            if (GerenteSom.Instance != null)
-            {
-                GerenteSom.Instance.StartAlarm();
-            }
-
-            if (emergencyLightsController != null)
-            {
-                emergencyLightsController.StartEmergencyLights();
-            }
-        }
+        MostrarObjetivo();
+        yield break;
     }
 
     public void PositionObjectiveCanvas()
@@ -966,8 +1326,9 @@ public class GerenteAlarme : MonoBehaviour
         GameObject targetObj = GetObjectiveCanvasObject();
         if (targetObj == null) return;
 
-        targetObj.transform.position = fixedObjectivePosition;
-        targetObj.transform.rotation = Quaternion.Euler(fixedObjectiveRotation);
+        targetObj.transform.position = new Vector3(-8.4399995803833f, 1.4908255338668824f, -1.3852607011795045f);
+        targetObj.transform.rotation = new Quaternion(0.0f, -1.0f, 0.0f, 0.0f);
+        targetObj.transform.localScale = new Vector3(0.0024999999441206457f, 0.0024999999441206457f, 0.0024999999441206457f);
     }
 
     private GameObject GetObjectiveCanvasObject()
@@ -1040,6 +1401,11 @@ public class GerenteAlarme : MonoBehaviour
 
     public void MostrarObjetivo()
     {
+        isGeneratorPowered = true;
+        isAlarmActive = true;
+        isReadingDiary = false;
+        isShowingPanelNotice = false;
+
         GameObject objCanvas = GetObjectiveCanvasObject();
         if (objCanvas == null)
         {
@@ -1053,7 +1419,7 @@ public class GerenteAlarme : MonoBehaviour
         SetHologramTheme(true);
         objCanvas.SetActive(true);
 
-        // No momento em que o objetivo aparece, a música e as luzes iniciam juntas!
+        // No momento em que o gerador é ligado, a música de alarme e as luzes de emergência iniciam juntas!
         if (GerenteSom.Instance != null)
         {
             GerenteSom.Instance.StartAlarm();
@@ -1064,25 +1430,30 @@ public class GerenteAlarme : MonoBehaviour
             emergencyLightsController.StartEmergencyLights();
         }
 
-        CanvasGroup cg = objCanvas.GetComponent<CanvasGroup>();
-        if (cg == null) cg = narrativeCanvasGroup;
-        if (cg != null) cg.alpha = 1f;
+        string title = string.IsNullOrEmpty(energyRestoredTitle) ? "ENERGIA RESTAURADA" : energyRestoredTitle;
+        string body = energyRestoredMessage;
 
         TMP_Text txt = objCanvas.GetComponentInChildren<TMP_Text>();
         if (txt == null) txt = narrativeText;
         if (txt != null)
         {
             txt.text =
-                $"<size=125%><color=#FCD34D><b>{objectiveTitle}</b></color></size>\n\n" +
-                $"<size=110%><color=#FFFFFF><b>{objectiveMessage}</b></color></size>\n\n" +
-                $"<size=75%><color=#94A3B8>{objectiveHint}</color></size>";
+                $"<size=85%><color=#F87171><b>{title}</b></color></size>\n\n\n\n\n" +
+                $"<size=70%>{body}</size>\n";
         }
+
+        if (btnVoltar != null)
+            btnVoltar.gameObject.SetActive(false);
 
         if (btnAvancar != null)
             btnAvancar.gameObject.SetActive(false);
 
-        if (btnVoltar != null)
-            btnVoltar.gameObject.SetActive(false);
+        if (transitionRoutine != null)
+            StopCoroutine(transitionRoutine);
+
+        CanvasGroup cg = objCanvas.GetComponent<CanvasGroup>();
+        if (cg == null) cg = narrativeCanvasGroup;
+        if (cg != null) cg.alpha = 1f;
     }
 }
 

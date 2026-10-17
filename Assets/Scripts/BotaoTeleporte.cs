@@ -14,6 +14,23 @@ public class BotaoTeleporte : MonoBehaviour
 
     public void Teleportar()
     {
+        if (!PainelTemEnergia())
+        {
+            Debug.Log("[BotaoTeleporte] Painel sem energia! Abasteça e ative o gerador auxiliar antes de ativar a defesa.");
+
+            if (GerenteSom.Instance != null)
+            {
+                GerenteSom.Instance.PlayClick();
+            }
+
+            if (GerenteAlarme.Instance != null)
+            {
+                GerenteAlarme.Instance.MostrarAvisoPainelSemEnergia();
+            }
+
+            return;
+        }
+
         Debug.Log("[BotaoTeleporte] Acionando transição para a DefenseScene...");
 
         // 1. Toca som de ativação do painel
@@ -70,6 +87,25 @@ public class BotaoTeleporte : MonoBehaviour
             ExecutarMovimento(xrOrigin);
             AtivarFaseDefesa();
         }
+    }
+
+    private bool PainelTemEnergia()
+    {
+        GeradorCombustivel gerador = GeradorCombustivel.Instance != null
+            ? GeradorCombustivel.Instance
+            : FindAnyObjectByType<GeradorCombustivel>();
+
+        if (gerador != null && gerador.GeradorAtivado)
+            return true;
+
+        if (GerenteAlarme.Instance != null && (GerenteAlarme.Instance.IsGeneratorPowered || GerenteAlarme.Instance.IsAlarmActive))
+            return true;
+
+        // Caso esteja em outra cena que não possua GeradorCombustivel nem GerenteAlarme, permite o uso normal
+        if (gerador == null && GerenteAlarme.Instance == null)
+            return true;
+
+        return false;
     }
 
     private void ExecutarMovimento(XROrigin xrOrigin)
