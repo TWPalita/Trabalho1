@@ -41,6 +41,12 @@ public class GerenteDefesa : MonoBehaviour
         if (Instance == null) Instance = this;
         else if (Instance != this) Destroy(gameObject);
 
+        ArmaVR physicalWeapon = ArmaVR.EnsureScenePhysicalWeaponConfigured();
+        if (physicalWeapon != null)
+        {
+            weaponController = physicalWeapon;
+        }
+
         if (mathManager == null) mathManager = FindAnyObjectByType<GeradorMatematica>();
         if (scoreManager == null) scoreManager = FindAnyObjectByType<GerentePontuacao>();
         if (weaponController == null) weaponController = FindAnyObjectByType<ArmaVR>();
@@ -156,11 +162,26 @@ public class GerenteDefesa : MonoBehaviour
         }
     }
 
+    private Vector3 GetElevatedSpawnPosition(int spawnIndex)
+    {
+        if (spawnPoints == null || spawnIndex < 0 || spawnIndex >= spawnPoints.Length || spawnPoints[spawnIndex] == null)
+            return Vector3.zero;
+
+        Vector3 pos = spawnPoints[spawnIndex].position;
+        // Sobe os detritos para ficarem mais altos no campo de visão do para-brisa
+        if (pos.y < 6.0f)
+        {
+            pos.y += 1.8f;
+        }
+        return pos;
+    }
+
     private void SpawnSingleDebris(int spawnIndex)
     {
         if (spawnIndex < 0 || spawnIndex >= spawnPoints.Length || spawnPoints[spawnIndex] == null) return;
 
-        GameObject obj = Instantiate(debrisPrefab, spawnPoints[spawnIndex].position, spawnPoints[spawnIndex].rotation);
+        Vector3 spawnPos = GetElevatedSpawnPosition(spawnIndex);
+        GameObject obj = Instantiate(debrisPrefab, spawnPos, spawnPoints[spawnIndex].rotation);
         obj.name = $"Detrito_{spawnIndex + 1}";
 
         Detrito deb = obj.GetComponent<Detrito>();
@@ -174,7 +195,7 @@ public class GerenteDefesa : MonoBehaviour
         // Garante que o DebrisMovement esteja presente e inicializado no ponto de spawn
         DebrisMovement mov = obj.GetComponent<DebrisMovement>();
         if (mov == null) mov = obj.AddComponent<DebrisMovement>();
-        mov.SetSpawnPoint(spawnPoints[spawnIndex].position, spawnIndex);
+        mov.SetSpawnPoint(spawnPos, spawnIndex);
     }
 
     private void SpawnDebris(int[] options)
@@ -188,7 +209,8 @@ public class GerenteDefesa : MonoBehaviour
         int count = Mathf.Min(options.Length, spawnPoints.Length);
         for (int i = 0; i < count; i++)
         {
-            GameObject obj = Instantiate(debrisPrefab, spawnPoints[i].position, spawnPoints[i].rotation);
+            Vector3 spawnPos = GetElevatedSpawnPosition(i);
+            GameObject obj = Instantiate(debrisPrefab, spawnPos, spawnPoints[i].rotation);
 
             Detrito deb = obj.GetComponent<Detrito>();
             if (deb != null)
@@ -200,7 +222,7 @@ public class GerenteDefesa : MonoBehaviour
 
             DebrisMovement mov = obj.GetComponent<DebrisMovement>();
             if (mov == null) mov = obj.AddComponent<DebrisMovement>();
-            mov.SetSpawnPoint(spawnPoints[i].position, i);
+            mov.SetSpawnPoint(spawnPos, i);
         }
     }
 

@@ -43,18 +43,172 @@ public class ArmaVR : MonoBehaviour
     private Material laserMat;
     private Coroutine beamRoutine;
 
+    // Sistema de Mira Laser contínua + Retícula no alvo
+    private LineRenderer aimLine;
+    private Material aimLineMat;
+    private GameObject aimReticleObj;
+    private Material aimReticleMat;
+    private readonly Color aimIdleColor = new Color(0.22f, 0.85f, 1f, 0.65f);
+    private readonly Color aimLockedColor = new Color(0.2f, 1f, 0.45f, 0.95f);
+
     private XRBaseInputInteractor cachedInteractor;
+    private XRBaseInputInteractor holdingInputInteractor;
     private IXRRayProvider cachedRayProvider;
     private XRGrabInteractable cachedGrabInteractable;
     private UnityEngine.XR.Interaction.Toolkit.Interactors.IXRSelectInteractor currentHoldingInteractor;
 
+    private Vector3 initialRestPosition;
+    private Quaternion initialRestRotation;
+    private Vector3 initialRestScale = new Vector3(0.03f, 0.03f, 0.03f);
+    private bool hasSavedInitialPose = false;
+    private bool isEquippedInHand = false;
+    private Transform equippedControllerRoot;
+    private float lastGrabTime = -10f;
+
     public UnityEngine.XR.XRNode ControllerNode => controllerNode;
     public bool CanShoot => canShoot;
-    public bool IsGrabbed => currentHoldingInteractor != null;
+    public bool IsGrabbed => isEquippedInHand || currentHoldingInteractor != null;
+    public bool IsGrabbableWeapon => cachedGrabInteractable != null || isEquippedInHand;
+
+    /// <summary>
+    /// Procura o objeto 'arma' na cena e garante que possua BoxCollider, Rigidbody,
+    /// XRGrabInteractable, AttachPoint, PontoDisparo e ArmaVR configurados.
+    /// </summary>
+    public static ArmaVR EnsureScenePhysicalWeaponConfigured()
+    {
+        GameObject armaObj = GameObject.Find("arma");
+        if (armaObj == null)
+        {
+            foreach (var root in UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects())
+            {
+                if (root.name.Equals("arma", System.StringComparison.OrdinalIgnoreCase) ||
+                    root.name.IndexOf("arma", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    armaObj = root;
+                    break;
+                }
+            }
+        }
+
+        if (armaObj == null) return null;
+        return ConfigureWeaponObject(armaObj);
+    }
+
+    public static ArmaVR ConfigureWeaponObject(GameObject armaObj)
+    {
+        if (armaObj == null) return null;
+
+        // Ajusta o tamanho da arma sobre o painel para ficar bem visível a partir da cadeira
+        if (armaObj.transform.localScale.x < 0.035f)
+        {
+            armaObj.transform.localScale = new Vector3(0.036f, 0.036f, 0.036f);
+        }
+
+        // 1. BoxCollider ajustado ao modelo 3D da arma (com margem ampla para pegada a partir da cadeira)
+        BoxCollider box = armaObj.GetComponent<BoxCollider>();
+        if (box == null)
+        {
+            box = armaObj.AddComponent<BoxCollider>();
+        }
+        MeshFilter mf = armaObj.GetComponentInChildren<MeshFilter>();
+        if (mf != null && mf.sharedMesh != null)
+        {
+            Bounds b = mf.sharedMesh.bounds;
+            box.center = b.center;
+            box.size = new Vector3(
+                Mathf.Max(b.size.x * 2.2f, 5.5f),
+                Mathf.Max(b.size.y * 1.8f, 5.5f),
+                Mathf.Max(b.size.z * 1.5f, 8.0f)
+            );
+        }
+        else
+        {
+            box.center = new Vector3(0f, 2.08f, 0.70f);
+            box.size = new Vector3(5.5f, 5.5f, 8.0f);
+        }
+        box.isTrigger = false;
+
+        // 2. Rigidbody (cinemático e sem gravidade enquanto repousa no painel do cockpit)
+        Rigidbody rb = armaObj.GetComponent<Rigidbody>();
+        if (rb == null)
+        {
+            rb = armaObj.AddComponent<Rigidbody>();
+        }
+        rb.mass = 1.5f;
+        rb.useGravity = false;
+        rb.isKinematic = true;
+        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
+
+        // 3. Ponto de encaixe da mão (AttachPoint no cabo da arma, apontando o cano para +Z)
+        Transform attachPoint = armaObj.transform.Find("AttachPoint");
+        if (attachPoint == null)
+        {
+            GameObject attachObj = new GameObject("AttachPoint");
+            attachObj.transform.SetParent(armaObj.transform, false);
+            attachPoint = attachObj.transform;
+        }
+        attachPoint.localPosition = new Vector3(0f, 1.35f, -0.85f);
+        attachPoint.localRotation = Quaternion.identity;
+
+        // 4. Ponto de disparo do laser na ponta do cano da arma (PontoDisparo)
+        Transform muzzle = armaObj.transform.Find("PontoDisparo");
+        if (muzzle == null)
+        {
+            GameObject muzzleObj = new GameObject("PontoDisparo");
+            muzzleObj.transform.SetParent(armaObj.transform, false);
+            muzzle = muzzleObj.transform;
+        }
+        muzzle.localPosition = new Vector3(0f, 2.53f, 3.35f);
+        muzzle.localRotation = Quaternion.identity;
+
+        // 5. XRGrabInteractable para pegar a arma com a mão no VR
+        XRGrabInteractable grab = armaObj.GetComponent<XRGrabInteractable>();
+        if (grab == null)
+        {
+            grab = armaObj.AddComponent<XRGrabInteractable>();
+        }
+        grab.movementType = XRBaseInteractable.MovementType.Instantaneous;
+        grab.useDynamicAttach = false;
+        grab.matchAttachPosition = true;
+        grab.matchAttachRotation = true;
+        grab.attachTransform = attachPoint;
+        grab.farAttachMode = UnityEngine.XR.Interaction.Toolkit.Attachment.InteractableFarAttachMode.Near;
+        grab.throwOnDetach = false;
+        grab.forceGravityOnDetach = false;
+        grab.retainTransformParent = false;
+        if (!grab.colliders.Contains(box))
+        {
+            grab.colliders.Add(box);
+        }
+
+        // 6. Componente ArmaVR na própria arma
+        ArmaVR armaScript = armaObj.GetComponent<ArmaVR>();
+        if (armaScript == null)
+        {
+            armaScript = armaObj.AddComponent<ArmaVR>();
+        }
+        armaScript.muzzlePoint = muzzle;
+        armaScript.cachedGrabInteractable = grab;
+
+        return armaScript;
+    }
 
     private void Awake()
     {
-        if (Instance == null && controllerNode == UnityEngine.XR.XRNode.RightHand)
+        if (gameObject.name.Equals("arma", System.StringComparison.OrdinalIgnoreCase) && GetComponent<XRGrabInteractable>() == null)
+        {
+            ConfigureWeaponObject(gameObject);
+        }
+        else
+        {
+            EnsureScenePhysicalWeaponConfigured();
+        }
+
+        if (Instance == null && (GetComponent<XRGrabInteractable>() != null || controllerNode == UnityEngine.XR.XRNode.RightHand))
+        {
+            Instance = this;
+        }
+        if (GetComponent<XRGrabInteractable>() != null)
         {
             Instance = this;
         }
@@ -68,6 +222,15 @@ public class ArmaVR : MonoBehaviour
         cachedGrabInteractable = GetComponent<XRGrabInteractable>();
         if (cachedGrabInteractable != null)
         {
+            initialRestPosition = transform.position;
+            initialRestRotation = transform.rotation;
+            initialRestScale = transform.localScale;
+            hasSavedInitialPose = true;
+
+            cachedGrabInteractable.selectEntered.RemoveListener(OnGrabSelected);
+            cachedGrabInteractable.selectExited.RemoveListener(OnGrabDeselected);
+            cachedGrabInteractable.activated.RemoveListener(OnGrabActivated);
+
             cachedGrabInteractable.selectEntered.AddListener(OnGrabSelected);
             cachedGrabInteractable.selectExited.AddListener(OnGrabDeselected);
             cachedGrabInteractable.activated.AddListener(OnGrabActivated);
@@ -75,26 +238,191 @@ public class ArmaVR : MonoBehaviour
 
         SetupMuzzlePoint();
         SetupLaserRenderer();
+        SetupAimSight();
     }
 
     private void OnGrabSelected(SelectEnterEventArgs args)
     {
-        currentHoldingInteractor = args.interactorObject;
-        if (currentHoldingInteractor != null)
+        if (args.interactorObject != null)
         {
-            string interactorName = currentHoldingInteractor.transform.name.ToLower();
-            if (interactorName.Contains("left")) controllerNode = UnityEngine.XR.XRNode.LeftHand;
-            else if (interactorName.Contains("right")) controllerNode = UnityEngine.XR.XRNode.RightHand;
+            EquipToControllerHand(args.interactorObject);
+        }
+    }
+
+    /// <summary>
+    /// Faz a arma assumir o lugar do controle VR na mão que a pegou,
+    /// ocultando o modelo visual do controle e fixando a arma diretamente na mão.
+    /// </summary>
+    private void EquipToControllerHand(UnityEngine.XR.Interaction.Toolkit.Interactors.IXRInteractor interactor)
+    {
+        if (isEquippedInHand || interactor == null) return;
+
+        isEquippedInHand = true;
+        currentHoldingInteractor = interactor as UnityEngine.XR.Interaction.Toolkit.Interactors.IXRSelectInteractor;
+        lastGrabTime = Time.time;
+
+        // 1. Localiza o Transform raiz do controlador da mão (Right Controller ou Left Controller)
+        Transform interactorTr = interactor.transform;
+        holdingInputInteractor = interactor as XRBaseInputInteractor;
+        if (holdingInputInteractor == null && interactorTr != null)
+        {
+            holdingInputInteractor = interactorTr.GetComponentInParent<XRBaseInputInteractor>();
+        }
+
+        Transform controllerRoot = interactorTr;
+        ArmaVR handControllerWeapon = null;
+        if (interactorTr != null)
+        {
+            Transform curr = interactorTr;
+            while (curr != null)
+            {
+                ArmaVR cw = curr.GetComponent<ArmaVR>();
+                if (cw != null && cw != this)
+                {
+                    handControllerWeapon = cw;
+                    controllerRoot = curr;
+                    break;
+                }
+                string n = curr.name.ToLower();
+                if (n.Contains("right controller") || n.Contains("left controller"))
+                {
+                    controllerRoot = curr;
+                    handControllerWeapon = curr.GetComponent<ArmaVR>();
+                    break;
+                }
+                curr = curr.parent;
+            }
+        }
+
+        equippedControllerRoot = controllerRoot;
+
+        // 2. Define a mão (LeftHand / RightHand) e sincroniza as InputActions daquele controle
+        string fullHierarchyName = (controllerRoot != null ? controllerRoot.name : "") + " " + (interactorTr != null ? interactorTr.name : "");
+        fullHierarchyName = fullHierarchyName.ToLower();
+        if (handControllerWeapon != null)
+        {
+            controllerNode = handControllerWeapon.ControllerNode;
+            if (handControllerWeapon.triggerAction.action != null) triggerAction = handControllerWeapon.triggerAction;
+            if (handControllerWeapon.selectAction.action != null) selectAction = handControllerWeapon.selectAction;
+        }
+        else
+        {
+            if (fullHierarchyName.Contains("left")) controllerNode = UnityEngine.XR.XRNode.LeftHand;
+            else if (fullHierarchyName.Contains("right")) controllerNode = UnityEngine.XR.XRNode.RightHand;
+
+            foreach (var c in ActiveControllers)
+            {
+                if (c != null && c != this && !c.IsGrabbableWeapon && c.ControllerNode == controllerNode)
+                {
+                    if (c.triggerAction.action != null) triggerAction = c.triggerAction;
+                    if (c.selectAction.action != null) selectAction = c.selectAction;
+                    break;
+                }
+            }
+        }
+        ResolveInputActions();
+
+        // 3. Desativa o XRGrabInteractable e o BoxCollider da arma para que ela fique fixa na mão no lugar do controle
+        BoxCollider col = GetComponent<BoxCollider>();
+        if (col != null) col.enabled = false;
+
+        Rigidbody rb = GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+            rb.useGravity = false;
+        }
+
+        if (cachedGrabInteractable != null)
+        {
+            cachedGrabInteractable.enabled = false;
+        }
+
+        // 4. Oculta o modelo visual do controle VR daquela mão para a arma assumir o lugar dele
+        if (controllerRoot != null)
+        {
+            HideControllerVisuals(controllerRoot);
+
+            // 5. Posiciona a arma diretamente como filha do controle, encaixando o cabo na mão e apontando para frente
+            Vector3 targetScale = initialRestScale.sqrMagnitude > 0.00001f ? initialRestScale : new Vector3(0.03f, 0.03f, 0.03f);
+            transform.SetParent(controllerRoot, false);
+            transform.localScale = targetScale;
+            transform.localRotation = Quaternion.identity;
+            transform.localPosition = new Vector3(0f, -1.35f * targetScale.y, 0.85f * targetScale.z);
+        }
+
+        if (GerenteSom.Instance != null)
+        {
+            GerenteSom.Instance.PlayClick();
+        }
+    }
+
+    private void HideControllerVisuals(Transform controllerRoot)
+    {
+        if (controllerRoot == null) return;
+
+        // Desativa objetos filhos de visualização do controle (ex: "Right Controller Visual" / "Left Controller Visual")
+        for (int i = 0; i < controllerRoot.childCount; i++)
+        {
+            Transform child = controllerRoot.GetChild(i);
+            if (child == transform) continue;
+
+            string childName = child.name.ToLower();
+            if (childName.Contains("visual") || childName.Contains("model"))
+            {
+                child.gameObject.SetActive(false);
+            }
+        }
+
+        // Oculta também a linha padrão do controle para usar apenas a mira laser do cano da arma
+        var lineVisuals = controllerRoot.GetComponentsInChildren<UnityEngine.XR.Interaction.Toolkit.Interactors.Visuals.XRInteractorLineVisual>(true);
+        foreach (var lv in lineVisuals)
+        {
+            if (lv != null) lv.enabled = false;
+        }
+
+        // Garante que qualquer MeshRenderer / SkinnedMeshRenderer / LineRenderer do controle fique oculto, preservando apenas a arma
+        Renderer[] renderers = controllerRoot.GetComponentsInChildren<Renderer>(true);
+        foreach (var r in renderers)
+        {
+            if (r == null) continue;
+            if (r.transform.IsChildOf(transform)) continue;
+
+            if (r is MeshRenderer || r is SkinnedMeshRenderer || r is LineRenderer)
+            {
+                r.enabled = false;
+            }
         }
     }
 
     private void OnGrabDeselected(SelectExitEventArgs args)
     {
+        // Se a arma já assumiu o lugar do controle na mão, permanece equipada na mão
+        if (isEquippedInHand && equippedControllerRoot != null)
+        {
+            Vector3 targetScale = initialRestScale.sqrMagnitude > 0.00001f ? initialRestScale : new Vector3(0.03f, 0.03f, 0.03f);
+            if (transform.parent != equippedControllerRoot)
+            {
+                transform.SetParent(equippedControllerRoot, false);
+            }
+            transform.localScale = targetScale;
+            transform.localRotation = Quaternion.identity;
+            transform.localPosition = new Vector3(0f, -1.35f * targetScale.y, 0.85f * targetScale.z);
+            return;
+        }
+
         currentHoldingInteractor = null;
+        holdingInputInteractor = null;
     }
 
     private void OnGrabActivated(ActivateEventArgs args)
     {
+        if (!isEquippedInHand && args.interactorObject != null)
+        {
+            EquipToControllerHand(args.interactorObject);
+            return;
+        }
+
         if (canShoot && Time.time >= nextFireTime)
         {
             Fire();
@@ -113,6 +441,15 @@ public class ArmaVR : MonoBehaviour
 
     private void SetupMuzzlePoint()
     {
+        if (muzzlePoint != null) return;
+
+        Transform customMuzzle = transform.Find("PontoDisparo");
+        if (customMuzzle != null)
+        {
+            muzzlePoint = customMuzzle;
+            return;
+        }
+
         if (muzzlePoint == null && cachedRayProvider != null)
         {
             muzzlePoint = cachedRayProvider.GetOrCreateRayOrigin();
@@ -124,7 +461,7 @@ public class ArmaVR : MonoBehaviour
             foreach (var ch in children)
             {
                 string n = ch.name.ToLower();
-                if (n.Contains("attach") || n.Contains("origin") || n.Contains("ray") || n.Contains("muzzle"))
+                if (n.Contains("ponto") || n.Contains("muzzle") || n.Contains("origin") || n.Contains("ray"))
                 {
                     muzzlePoint = ch;
                     break;
@@ -160,6 +497,114 @@ public class ArmaVR : MonoBehaviour
 
         pooledLine.material = laserMat;
         pooledLine.enabled = false;
+    }
+
+    /// <summary>
+    /// Configura a mira laser contínua (feixe fino + ponto luminoso de retícula) saindo do cano da arma.
+    /// </summary>
+    private void SetupAimSight()
+    {
+        if (!IsGrabbableWeapon && !gameObject.name.Equals("arma", System.StringComparison.OrdinalIgnoreCase))
+            return;
+
+        Shader shader = Shader.Find("Sprites/Default") ?? Shader.Find("Universal Render Pipeline/Unlit");
+
+        // 1. Linha fina da mira laser
+        GameObject aimObj = new GameObject("MiraLaser_Line");
+        aimObj.transform.SetParent(transform, false);
+        aimLine = aimObj.AddComponent<LineRenderer>();
+        aimLine.startWidth = 0.008f;
+        aimLine.endWidth = 0.003f;
+        aimLine.positionCount = 2;
+        aimLine.useWorldSpace = true;
+        aimLine.numCapVertices = 4;
+        aimLine.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        aimLine.receiveShadows = false;
+
+        aimLineMat = new Material(shader);
+        SetMaterialColor(aimLineMat, aimIdleColor);
+        aimLine.material = aimLineMat;
+        aimLine.enabled = false;
+
+        // 2. Ponto/Retícula 3D onde a mira está apontando
+        aimReticleObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        aimReticleObj.name = "PontoMira_Reticle";
+        aimReticleObj.transform.SetParent(transform, false);
+        Collider retCol = aimReticleObj.GetComponent<Collider>();
+        if (retCol != null) Destroy(retCol);
+
+        Renderer retRenderer = aimReticleObj.GetComponent<Renderer>();
+        if (retRenderer != null)
+        {
+            retRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            retRenderer.receiveShadows = false;
+            aimReticleMat = new Material(shader);
+            SetMaterialColor(aimReticleMat, aimIdleColor);
+            retRenderer.sharedMaterial = aimReticleMat;
+        }
+
+        aimReticleObj.SetActive(false);
+    }
+
+    private void SetMaterialColor(Material mat, Color col)
+    {
+        if (mat == null) return;
+        mat.color = col;
+        if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", col);
+        if (mat.HasProperty("_Color")) mat.SetColor("_Color", col);
+    }
+
+    private void UpdateAimSight()
+    {
+        if (aimLine == null || aimReticleObj == null) return;
+
+        if (!isEquippedInHand)
+        {
+            if (aimLine.enabled) aimLine.enabled = false;
+            if (aimReticleObj.activeSelf) aimReticleObj.SetActive(false);
+            return;
+        }
+
+        Vector3 origin = muzzlePoint != null ? muzzlePoint.position : transform.position;
+        Vector3 forward = muzzlePoint != null ? muzzlePoint.forward : transform.forward;
+
+        bool lockedOnTarget = false;
+        float aimDistance = 40f;
+
+        if (TryFindValidTarget(origin, forward, 0f, out RaycastHit hit) ||
+            TryFindValidTarget(origin, forward, 0.45f, out hit))
+        {
+            lockedOnTarget = true;
+            aimDistance = hit.distance > 0.1f
+                ? hit.distance
+                : Vector3.Distance(origin, hit.collider.bounds.center);
+            aimDistance = Mathf.Clamp(aimDistance, 0.3f, maxDistance);
+        }
+
+        // Mantém a linha de mira 100% reta na direção exata do cano da arma (forward)
+        Vector3 endPoint = origin + forward * aimDistance;
+
+        Color targetColor = lockedOnTarget ? aimLockedColor : aimIdleColor;
+        SetMaterialColor(aimLineMat, targetColor);
+        SetMaterialColor(aimReticleMat, lockedOnTarget ? new Color(0.2f, 1f, 0.45f, 1f) : new Color(0.25f, 0.9f, 1f, 0.95f));
+
+        aimLine.enabled = true;
+        aimLine.SetPosition(0, origin);
+        aimLine.SetPosition(1, endPoint);
+
+        aimReticleObj.SetActive(true);
+        aimReticleObj.transform.position = endPoint;
+
+        float dist = Vector3.Distance(origin, endPoint);
+        float worldScale = Mathf.Clamp(dist * 0.015f, 0.035f, 0.45f);
+        if (lockedOnTarget)
+        {
+            worldScale *= 1.25f + Mathf.Sin(Time.time * 12f) * 0.15f;
+        }
+
+        Vector3 parentLossy = transform.lossyScale;
+        float invScale = parentLossy.x > 0.0001f ? (1f / parentLossy.x) : 33.33f;
+        aimReticleObj.transform.localScale = Vector3.one * (worldScale * invScale);
     }
 
     private void ResolveInputActions()
@@ -250,6 +695,8 @@ public class ArmaVR : MonoBehaviour
     private void OnDisable()
     {
         DisableActions();
+        if (aimLine != null) aimLine.enabled = false;
+        if (aimReticleObj != null) aimReticleObj.SetActive(false);
     }
 
     private void OnDestroy()
@@ -264,6 +711,8 @@ public class ArmaVR : MonoBehaviour
         if (Instance == this) Instance = null;
         ActiveControllers.Remove(this);
         if (laserMat != null) Destroy(laserMat);
+        if (aimLineMat != null) Destroy(aimLineMat);
+        if (aimReticleMat != null) Destroy(aimReticleMat);
     }
 
     public static void SetAllCanShoot(bool enable)
@@ -290,20 +739,81 @@ public class ArmaVR : MonoBehaviour
         canShoot = enable;
     }
 
+    private void LateUpdate()
+    {
+        if (IsGrabbableWeapon)
+        {
+            UpdateAimSight();
+        }
+    }
+
     private void Update()
     {
+        // Se for a arma física e ainda não estiver equipada na mão, permite equipá-la ao apontar e apertar Grip ou Trigger
+        if (IsGrabbableWeapon && !isEquippedInHand)
+        {
+            if (cachedGrabInteractable != null && cachedGrabInteractable.isHovered && cachedGrabInteractable.interactorsHovering.Count > 0)
+            {
+                var hoveringInteractor = cachedGrabInteractable.interactorsHovering[0];
+                if (hoveringInteractor != null && CheckHoverPickupInput(hoveringInteractor))
+                {
+                    EquipToControllerHand(hoveringInteractor);
+                }
+            }
+            return;
+        }
+
         if (!canShoot || Time.time < nextFireTime) return;
 
-        // Se a arma for um item pegável (XRGrabInteractable), dispara apenas quando estiver empunhada
-        if (cachedGrabInteractable != null && currentHoldingInteractor == null) return;
-
-        // Se este for o blaster direto do controle, mas o interactor já estiver segurando uma arma física, cede a vez
-        if (cachedGrabInteractable == null && IsHoldingWeapon()) return;
+        if (IsGrabbableWeapon)
+        {
+            if (!isEquippedInHand) return;
+            if (Time.time - lastGrabTime < 0.25f) return;
+        }
+        else
+        {
+            // Se existir uma arma física pegável na cena (ex: 'arma'), o jogador só atira com a arma equipada na mão
+            if (HasGrabbableWeaponInScene() || IsHoldingWeapon()) return;
+        }
 
         if (CheckFireInput())
         {
             Fire();
         }
+    }
+
+    private bool CheckHoverPickupInput(UnityEngine.XR.Interaction.Toolkit.Interactors.IXRInteractor interactor)
+    {
+        if (interactor is XRBaseInputInteractor inputInteractor)
+        {
+            if (inputInteractor.selectInput != null &&
+                (inputInteractor.selectInput.ReadWasPerformedThisFrame() || inputInteractor.selectInput.ReadIsPerformed()))
+                return true;
+
+            if (inputInteractor.activateInput != null &&
+                (inputInteractor.activateInput.ReadWasPerformedThisFrame() || inputInteractor.activateInput.ReadIsPerformed()))
+                return true;
+        }
+#if UNITY_EDITOR
+        if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+        {
+            return true;
+        }
+#endif
+        return false;
+    }
+
+    private static bool HasGrabbableWeaponInScene()
+    {
+        for (int i = 0; i < ActiveControllers.Count; i++)
+        {
+            var c = ActiveControllers[i];
+            if (c != null && c.gameObject.activeInHierarchy && c.IsGrabbableWeapon)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private bool IsHoldingWeapon()
@@ -324,11 +834,14 @@ public class ArmaVR : MonoBehaviour
 
     /// <summary>
     /// Avalia múltiplos canais de entrada dos controladores VR para detectar disparo imediato.
-    /// Funciona nativamente com Trigger, Grip e botões de ação em todos os headsets VR e no Simulador.
+    /// Quando empunhando uma arma física (XRGrabInteractable), usa o Gatilho (Trigger/Activate) ou botões primários,
+    /// mantendo o Grip (Select) exclusivo para segurar a arma.
     /// </summary>
     private bool CheckFireInput()
     {
-        // 1. Checa as Input Actions oficiais configuradas (Activate / Trigger e Select / Grip)
+        bool isPhysicalWeapon = IsGrabbableWeapon;
+
+        // 1. Checa a Input Action de Gatilho (Activate / Trigger) e Select (Grip)
         if (triggerAction.action != null)
         {
             if (triggerAction.action.WasPressedThisFrame() || triggerAction.action.ReadValue<float>() > 0.45f)
@@ -339,30 +852,30 @@ public class ArmaVR : MonoBehaviour
 
         if (selectAction.action != null)
         {
-            if (selectAction.action.WasPressedThisFrame() || selectAction.action.ReadValue<float>() > 0.45f)
+            if (selectAction.action.WasPressedThisFrame() || (!isPhysicalWeapon && selectAction.action.ReadValue<float>() > 0.45f))
             {
                 return true;
             }
         }
 
-        // 2. Checa diretamente o XRBaseInputInteractor (NearFarInteractor ou RayInteractor)
-        if (cachedInteractor != null)
+        // 2. Checa o Interactor da mão onde a arma está equipada (ou o interactor do próprio controle)
+        XRBaseInputInteractor activeInteractor = isPhysicalWeapon ? holdingInputInteractor : cachedInteractor;
+        if (activeInteractor != null)
         {
-            if (cachedInteractor.activateInput != null)
+            if (activeInteractor.activateInput != null)
             {
-                if (cachedInteractor.activateInput.ReadWasPerformedThisFrame() || 
-                    cachedInteractor.activateInput.ReadIsPerformed() || 
-                    cachedInteractor.activateInput.ReadValue() > 0.45f)
+                if (activeInteractor.activateInput.ReadWasPerformedThisFrame() || 
+                    activeInteractor.activateInput.ReadIsPerformed() || 
+                    activeInteractor.activateInput.ReadValue() > 0.45f)
                 {
                     return true;
                 }
             }
 
-            if (cachedInteractor.selectInput != null)
+            if (activeInteractor.selectInput != null)
             {
-                if (cachedInteractor.selectInput.ReadWasPerformedThisFrame() || 
-                    cachedInteractor.selectInput.ReadIsPerformed() || 
-                    cachedInteractor.selectInput.ReadValue() > 0.45f)
+                if (activeInteractor.selectInput.ReadWasPerformedThisFrame() || 
+                    (!isPhysicalWeapon && (activeInteractor.selectInput.ReadIsPerformed() || activeInteractor.selectInput.ReadValue() > 0.45f)))
                 {
                     return true;
                 }
@@ -379,10 +892,13 @@ public class ArmaVR : MonoBehaviour
 
             if (IsControlActive(device, "trigger") ||
                 IsControlActive(device, "triggerButton") ||
-                IsControlActive(device, "grip") ||
-                IsControlActive(device, "gripButton") ||
                 IsControlActive(device, "primaryButton") ||
                 IsControlActive(device, "secondaryButton"))
+            {
+                return true;
+            }
+
+            if (!isPhysicalWeapon && (IsControlActive(device, "grip") || IsControlActive(device, "gripButton")))
             {
                 return true;
             }
@@ -394,19 +910,25 @@ public class ArmaVR : MonoBehaviour
         {
             if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.triggerButton, out bool tb) && tb) return true;
             if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.trigger, out float tv) && tv > 0.45f) return true;
-            if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.gripButton, out bool gb) && gb) return true;
-            if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.grip, out float gv) && gv > 0.45f) return true;
+            if (!isPhysicalWeapon)
+            {
+                if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.gripButton, out bool gb) && gb) return true;
+                if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.grip, out float gv) && gv > 0.45f) return true;
+            }
             if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primaryButton, out bool pb) && pb) return true;
             if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.secondaryButton, out bool sb) && sb) return true;
         }
 
 #if UNITY_EDITOR
         // Suporte para testes rápidos no Unity Editor através do XR Device Simulator / cliques do mouse
-        if (isRightHand && Mouse.current != null && (Mouse.current.leftButton.isPressed || Mouse.current.leftButton.wasPressedThisFrame))
+        if (Mouse.current != null && (Mouse.current.leftButton.isPressed || Mouse.current.leftButton.wasPressedThisFrame))
         {
-            return true;
+            if (isPhysicalWeapon || isRightHand)
+            {
+                return true;
+            }
         }
-        else if (!isRightHand && Mouse.current != null && (Mouse.current.rightButton.isPressed || Mouse.current.rightButton.wasPressedThisFrame))
+        else if (!isPhysicalWeapon && !isRightHand && Mouse.current != null && (Mouse.current.rightButton.isPressed || Mouse.current.rightButton.wasPressedThisFrame))
         {
             return true;
         }
@@ -469,7 +991,7 @@ public class ArmaVR : MonoBehaviour
             GerenteSom.Instance.PlayLaser();
         }
 
-        // 2. Origem e direção do disparo alinhados ao raio do controlador VR
+        // 2. Origem e direção do disparo alinhados ao cano da arma (muzzlePoint)
         Vector3 origin;
         Vector3 forward;
 
@@ -490,23 +1012,18 @@ public class ArmaVR : MonoBehaviour
             forward = transform.forward;
         }
 
-        // 3. Detecção de Colisão: Raycast direto + SphereCast generoso (Aim Assist para VR)
+        // 3. Detecção de Colisão: RaycastAll direto + SphereCastAll generoso (apenas para alvos reais)
         Vector3 targetPoint = origin + forward * maxDistance;
         GameObject hitObject = null;
 
-        RaycastHit hit;
-        bool hasHit = Physics.Raycast(origin, forward, out hit, maxDistance, hitLayers, QueryTriggerInteraction.Collide);
-
-        if (!hasHit)
+        if (TryFindValidTarget(origin, forward, 0f, out RaycastHit validHit) ||
+            TryFindValidTarget(origin, forward, 0.45f, out validHit))
         {
-            // Aim assist generoso com esfera de raio 0.45m para conforto em mira VR à distância
-            hasHit = Physics.SphereCast(origin, 0.45f, forward, out hit, maxDistance, hitLayers, QueryTriggerInteraction.Collide);
-        }
-
-        if (hasHit)
-        {
-            targetPoint = hit.point;
-            hitObject = hit.collider.gameObject;
+            float hitDist = validHit.distance > 0.1f
+                ? validHit.distance
+                : Vector3.Distance(origin, validHit.collider.bounds.center);
+            targetPoint = origin + forward * Mathf.Clamp(hitDist, 0.3f, maxDistance);
+            hitObject = validHit.collider.gameObject;
         }
 
         // 4. Renderiza o raio laser luminoso no espaço 3D
@@ -539,6 +1056,53 @@ public class ArmaVR : MonoBehaviour
                 return;
             }
         }
+    }
+
+    private bool TryFindValidTarget(Vector3 origin, Vector3 forward, float radius, out RaycastHit bestHit)
+    {
+        bestHit = default;
+        RaycastHit[] hits = radius <= 0.001f
+            ? Physics.RaycastAll(origin, forward, maxDistance, hitLayers, QueryTriggerInteraction.Collide)
+            : Physics.SphereCastAll(origin, radius, forward, maxDistance, hitLayers, QueryTriggerInteraction.Collide);
+
+        if (hits == null || hits.Length == 0) return false;
+
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            // Ignora colisões sobrepostas na origem da esfera (onde Unity retorna point = (0,0,0) e distance = 0)
+            if (hits[i].distance <= 0.05f)
+                continue;
+
+            Collider col = hits[i].collider;
+            if (col == null) continue;
+
+            // Ignora colisores da própria arma ou dos controladores VR
+            if (col.transform.IsChildOf(transform) || col.GetComponentInParent<ArmaVR>() != null)
+                continue;
+
+            // Aceita apenas alvos válidos: Detritos espaciais ou Botões de UI do Cockpit
+            Detrito detrito = col.GetComponentInParent<Detrito>();
+            if (detrito != null)
+            {
+                bestHit = hits[i];
+                return true;
+            }
+
+            // Botões do painel só são ativados no raio direto (radius == 0), sem o SphereCast largo
+            if (radius <= 0.001f)
+            {
+                UnityEngine.UI.Button btn = col.GetComponentInParent<UnityEngine.UI.Button>();
+                if (btn != null && btn.interactable)
+                {
+                    bestHit = hits[i];
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private void TriggerHaptics(float amplitude, float duration)
@@ -582,3 +1146,44 @@ public class ArmaVR : MonoBehaviour
 }
 
 public class VRWeaponController : ArmaVR { }
+
+#if UNITY_EDITOR
+[UnityEditor.InitializeOnLoad]
+public static class ArmaVREditorAutoSetup
+{
+    static ArmaVREditorAutoSetup()
+    {
+        UnityEditor.EditorApplication.delayCall += TrySetupArmaInActiveScene;
+        UnityEditor.SceneManagement.EditorSceneManager.sceneOpened += (scene, mode) => TrySetupArmaInActiveScene();
+    }
+
+    private static void TrySetupArmaInActiveScene()
+    {
+        if (UnityEditor.EditorApplication.isPlayingOrWillChangePlaymode) return;
+
+        var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+        if (!scene.IsValid() || !scene.isLoaded) return;
+
+        foreach (var root in scene.GetRootGameObjects())
+        {
+            if (root != null && root.name.Equals("arma", System.StringComparison.OrdinalIgnoreCase))
+            {
+                bool needsSave = (root.GetComponent<ArmaVR>() == null ||
+                                  root.GetComponent<XRGrabInteractable>() == null ||
+                                  root.GetComponent<Rigidbody>() == null ||
+                                  root.GetComponent<BoxCollider>() == null);
+
+                ArmaVR.ConfigureWeaponObject(root);
+
+                if (needsSave)
+                {
+                    UnityEditor.EditorUtility.SetDirty(root);
+                    UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
+                }
+                break;
+            }
+        }
+    }
+}
+#endif
+
