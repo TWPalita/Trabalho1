@@ -1,24 +1,18 @@
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
-using UnityEngine.XR;
-using UnityEngine.XR.Interaction.Toolkit.Interactables;
-using UnityEngine.XR.Interaction.Toolkit.UI;
 using TMPro;
 
 /// <summary>
-/// Controla a sequência de introdução narrativa na DefenseScene antes do início da batalha espacial:
-/// 1. Exibe o Canvas 1: PROTOCOLO DE INTERCEPTAÇÃO / SISTEMA DE DEFESA ATIVADO com botão [ ENTENDI ];
-/// 2. Exibe o Canvas 2: CONTROLE DA ARMA / PREPARE-SE PARA A INTERCEPTAÇÃO com botão [ INICIAR DEFESA ];
-/// 3. Bloqueia o combate até que o jogador clique em [ INICIAR DEFESA ];
-/// 4. Inicia a defesa espacial e libera os disparos.
+/// Gerencia a transição narrativa na DefenseScene por meio de um HUD Holográfico Sci-Fi
+/// no canto superior esquerdo do visor, renderizado via SDF + Degradê na GPU (Custom/HologramHUDCard
+/// e TextMeshPro/Distance Field - HologramHUD) com zero reconstrução de malha na CPU.
 /// </summary>
 public class IntroducaoDefesaVR : MonoBehaviour
 {
     public static IntroducaoDefesaVR Instance { get; private set; }
 
-    [Header("Canvases de Instrução (World Space)")]
+    [Header("Canvases de Instrução (Legado - Desativados para não poluir a tela)")]
     [SerializeField] private GameObject canvas1Protocolo;
     [SerializeField] private GameObject canvas2Arma;
     [SerializeField] private CanvasGroup group1;
@@ -27,18 +21,60 @@ public class IntroducaoDefesaVR : MonoBehaviour
     [Header("Arma Física do Cockpit")]
     [SerializeField] private GameObject physicalWeaponObj;
 
-    private bool isIntroActive = true;
-    private int currentStep = 1; // 1 = Canvas 1 (Protocolo), 2 = Canvas 2 (Arma), 0 = Concluído
-    private float inputCooldown = 0.5f;
-    private bool wasTriggerOrPrimaryPressed = false;
-    private readonly List<UnityEngine.XR.InputDevice> xrControllers = new List<UnityEngine.XR.InputDevice>();
+    private bool isIntroActive = false;
+    private bool hasEquippedWeaponOnce = false;
+    private bool hasStartedDefense = false;
+    private bool hasDismissedAfterFirstQuestion = false;
+    private float weaponEquippedTime = 0f;
+    private float combatCompactBlend = 0f;
+
+    // Luz guia sobre a arma física no console
+    private Light weaponGuideLight;
+
+    // Referências do HUD de Objetivos no Canto da Tela
+    private GameObject cornerHudCanvasObj;
+    private CanvasGroup cornerHudCanvasGroup;
+    private RectTransform cornerHudPanelRt;
+    private Image cornerHudMainCardImage;
+    private Image cornerHudDividerImage;
+    private readonly Image[] cornerHudStepImages = new Image[2];
+    private readonly RectTransform[] holoMoteRects = new RectTransform[10];
+    private readonly Image[] holoMoteImages = new Image[10];
+    private TMP_Text cornerHudHeaderText;
+    private TMP_Text cornerHudObjectiveText;
+    private TMP_Text cornerHudContextText;
+    private Coroutine cornerPulseRoutine;
+
+    // Materiais GPU de Holograma e Dissolução em Degradê (zero rebuild de Canvas/TMP)
+    private Material cardMainMaterial;
+    private Material cardElementMaterial;
+    private Material cardDividerMaterial;
+    private Material holoTmpMaterial;
+
+    private static Sprite cachedSoftCircleSprite;
+
+    // IDs de propriedades globais/materiais dos Shaders na GPU
+    private static readonly int PropWorldToLocal = Shader.PropertyToID("_HoloHudWorldToLocal");
+    private static readonly int PropDissolve = Shader.PropertyToID("_HoloHudDissolve");
+    private static readonly int PropAccentColor = Shader.PropertyToID("_HoloHudAccentColor");
+    private static readonly int PropSecondaryColor = Shader.PropertyToID("_HoloHudSecondaryColor");
+    private static readonly int PropBgLeftColor = Shader.PropertyToID("_HoloHudBgLeftColor");
+    private static readonly int PropBgRightColor = Shader.PropertyToID("_HoloHudBgRightColor");
+    private static readonly int PropLocalDissolve = Shader.PropertyToID("_Dissolve");
+    private static readonly int PropCardMode = Shader.PropertyToID("_CardMode");
+
+    private readonly Vector3 cornerHudScale = new Vector3(0.00050f, 0.00050f, 0.00050f);
 
     public bool IsIntroActive => isIntroActive;
 
     private void Awake()
     {
         if (Instance == null) Instance = this;
-        else if (Instance != this) Destroy(gameObject);
+        else if (Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
     }
 
     private void Start()
@@ -46,211 +82,273 @@ public class IntroducaoDefesaVR : MonoBehaviour
         BeginIntroSequence();
     }
 
+    private void OnDestroy()
+    {
+        Shader.SetGlobalFloat(PropDissolve, 0f);
+        if (cardMainMaterial != null) Destroy(cardMainMaterial);
+        if (cardElementMaterial != null) Destroy(cardElementMaterial);
+        if (cardDividerMaterial != null) Destroy(cardDividerMaterial);
+        if (holoTmpMaterial != null) Destroy(holoTmpMaterial);
+    }
+
     public void BeginIntroSequence()
     {
         isIntroActive = true;
-        currentStep = 1;
-        inputCooldown = 0.45f;
+        hasEquippedWeaponOnce = false;
+        hasStartedDefense = false;
+        hasDismissedAfterFirstQuestion = false;
+        weaponEquippedTime = 0f;
+        combatCompactBlend = 0f;
 
-        // 1. Bloqueia disparos de combate durante os canvases de introdução
-        ArmaVR.SetAllCanShoot(false);
+        Shader.SetGlobalFloat(PropDissolve, 0f);
 
-        // 2. Garante a configuração da arma da cena e dos canvases de história
+        // Desativa quaisquer canvases legados se existirem na cena
+        if (canvas1Protocolo != null) canvas1Protocolo.SetActive(false);
+        if (canvas2Arma != null) canvas2Arma.SetActive(false);
+
+        // 1. Garante a arma física configurada no console do cockpit e cria luz guia sobre ela
         EnsureWeaponInCockpit();
-        EnsureInstructionCanvases();
+        EnsureWeaponGuideLight();
 
-        // 3. Oculta temporariamente o HUD de combate para foco total na história e instruções
+        // 2. Cria o HUD holográfico Sci-Fi no canto superior esquerdo da tela
+        EnsureCornerObjectiveHUD();
+
+        // 3. Prepara o visor do cockpit e aguarda o jogador empunhar a arma laser para iniciar as rodadas
+        StartCoroutine(StartDefenseWithCornerObjectiveRoutine());
+    }
+
+    private IEnumerator StartDefenseWithCornerObjectiveRoutine()
+    {
+        yield return null;
+
         if (InterfaceVR.Instance != null)
         {
             InterfaceVR.Instance.HideGameOverPanel();
-            InterfaceVR.Instance.SetCockpitHUDVisible(false);
-            InterfaceVR.Instance.SetHUDRootElementsVisible(false);
+            InterfaceVR.Instance.SetCockpitHUDVisible(true);
+            InterfaceVR.Instance.SetHUDRootElementsVisible(true);
+            InterfaceVR.Instance.UpdateRound(1);
+            InterfaceVR.Instance.UpdateMathQuestion("PEGUE A ARMA");
         }
 
-        // 4. Exibe o primeiro Canvas (Protocolo de Interceptação)
-        ShowCanvas1();
+        ArmaVR.SetAllCanShoot(true);
+
+        // Se a arma já estiver equipada (ex: reinício rápido), inicia a defesa imediatamente
+        if (IsAnyWeaponGrabbed())
+        {
+            ActivateDefenseAfterWeaponPickup();
+            yield break;
+        }
+
+        // Exibe o objetivo inicial [1/2] da Defesa com paleta Âmbar-Dourado holográfica
+        SetCornerObjective(
+            "PROTOCOLO DE DEFESA  [1/2]",
+            "Pegue a arma laser sobre o console à direita.",
+            "A mira automática falhou! Aponte para a arma e pressione Gatilho ou Grip.",
+            new Color(1.00f, 0.78f, 0.18f, 1f),
+            new Color(0.95f, 0.42f, 0.08f, 1f),
+            new Color(0.10f, 0.06f, 0.015f, 0.94f),
+            new Color(0.22f, 0.12f, 0.03f, 0.58f)
+        );
+    }
+
+    private void ActivateDefenseAfterWeaponPickup()
+    {
+        if (hasEquippedWeaponOnce) return;
+
+        hasEquippedWeaponOnce = true;
+        hasStartedDefense = true;
+        isIntroActive = false;
+        weaponEquippedTime = Time.unscaledTime;
+        combatCompactBlend = 0f;
+
+        if (weaponGuideLight != null)
+        {
+            weaponGuideLight.enabled = false;
+        }
+
+        if (GerenteDefesa.Instance != null && !GerenteDefesa.Instance.IsDefenseActive)
+        {
+            GerenteDefesa.Instance.StartDefense();
+        }
+
+        SetCornerObjective(
+            "INTERCEPTAÇÃO ATIVA  [2/2]",
+            "Dispare no meteoro com o resultado exato da conta.",
+            "Atenção: atingir valores incorretos consome os escudos da nave!",
+            new Color(0.18f, 0.92f, 1.00f, 1f),
+            new Color(0.12f, 0.45f, 0.98f, 1f),
+            new Color(0.012f, 0.045f, 0.12f, 0.94f),
+            new Color(0.03f, 0.16f, 0.32f, 0.56f)
+        );
     }
 
     private void Update()
     {
-        if (!isIntroActive) return;
-
-        if (inputCooldown > 0f)
-        {
-            inputCooldown -= Time.deltaTime;
+        if (cornerHudCanvasObj == null)
             return;
+
+        // Pulsa suavemente a luz guia da arma enquanto o jogador ainda não a pegou
+        if (!hasEquippedWeaponOnce && weaponGuideLight != null && weaponGuideLight.enabled)
+        {
+            float pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 3.2f);
+            weaponGuideLight.intensity = Mathf.Lerp(0.85f, 1.55f, pulse);
         }
 
-        // 1. Suporte a clique com o Mouse no Editor / Simulator diretamente sobre o botão ou Canvas
-#if ENABLE_INPUT_SYSTEM
-        if (UnityEngine.InputSystem.Mouse.current != null &&
-            UnityEngine.InputSystem.Mouse.current.leftButton.wasPressedThisFrame)
+        // Permite pegar a arma clicando nela com o mouse no Editor (fallback rápido sem óculos VR)
+        if (!hasEquippedWeaponOnce)
         {
-            Camera cam = Camera.main;
-            if (cam != null)
+            TryEditorMouseWeaponPickup();
+        }
+
+        // Assim que o jogador empunhar a arma laser no cockpit, inicia as rodadas e avança para [2/2]
+        if (!hasEquippedWeaponOnce && IsAnyWeaponGrabbed())
+        {
+            ActivateDefenseAfterWeaponPickup();
+        }
+
+        // Oculta o HUD de canto quando a partida chega ao fim (Vitória ou Derrota) ou a partir da Rodada 2
+        if (hasStartedDefense && GerenteDefesa.Instance != null)
+        {
+            bool defenseRunning = GerenteDefesa.Instance.IsDefenseActive;
+            int currentRound = GerenteDefesa.Instance.CurrentRound;
+
+            if (!defenseRunning)
             {
-                Vector2 mousePos = UnityEngine.InputSystem.Mouse.current.position.ReadValue();
-                Ray ray = cam.ScreenPointToRay(mousePos);
-                if (TryRaycastInstructionButton(ray))
+                if (cornerHudCanvasObj.activeSelf)
                 {
-                    return;
+                    cornerHudCanvasObj.SetActive(false);
                 }
-            }
-        }
-
-        if (UnityEngine.InputSystem.Keyboard.current != null)
-        {
-            var kb = UnityEngine.InputSystem.Keyboard.current;
-            if (kb.spaceKey.wasPressedThisFrame || kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame)
-            {
-                TriggerCurrentStepButton();
                 return;
             }
-        }
-#endif
 
-        // 2. Suporte a controles VR (Gatilho apontando para o botão/canvas ou Botão Primário A/X)
-        bool pressedNow = false;
-        xrControllers.Clear();
-        InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Controller, xrControllers);
-        for (int i = 0; i < xrControllers.Count; i++)
-        {
-            var dev = xrControllers[i];
-            if (!dev.isValid) continue;
-
-            if (dev.TryGetFeatureValue(CommonUsages.primaryButton, out bool prim) && prim)
-                pressedNow = true;
-            if (dev.TryGetFeatureValue(CommonUsages.triggerButton, out bool trigBtn) && trigBtn)
-                pressedNow = true;
-            else if (dev.TryGetFeatureValue(CommonUsages.trigger, out float trigVal) && trigVal > 0.55f)
-                pressedNow = true;
-        }
-
-        if (pressedNow && !wasTriggerOrPrimaryPressed)
-        {
-            wasTriggerOrPrimaryPressed = true;
-            TriggerCurrentStepButton();
-            return;
-        }
-
-        if (!pressedNow)
-        {
-            wasTriggerOrPrimaryPressed = false;
+            if (currentRound >= 2 && !hasDismissedAfterFirstQuestion)
+            {
+                DismissObjectiveHologramAfterFirstQuestion();
+            }
         }
     }
 
-    private bool TryRaycastInstructionButton(Ray ray)
+    /// <summary>
+    /// Chamado explicitamente pelo GerenteDefesa.StartDefense() ao iniciar ou reiniciar a partida.
+    /// </summary>
+    public void OnDefenseRestarted()
     {
-        RaycastHit[] hits = Physics.RaycastAll(ray, 25f, ~0, QueryTriggerInteraction.Collide);
-        if (hits == null || hits.Length == 0) return false;
+        if (!hasEquippedWeaponOnce) return;
 
-        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        if (cornerPulseRoutine != null)
+        {
+            StopCoroutine(cornerPulseRoutine);
+            cornerPulseRoutine = null;
+        }
+
+        hasDismissedAfterFirstQuestion = false;
+        weaponEquippedTime = Time.unscaledTime;
+        combatCompactBlend = 0f;
+        ResetHologramShaderState();
+        SetCornerObjective(
+            "INTERCEPTAÇÃO ATIVA  [2/2]",
+            "Dispare no meteoro com o resultado exato da conta.",
+            "Atenção: atingir valores incorretos consome os escudos da nave!",
+            new Color(0.18f, 0.92f, 1.00f, 1f),
+            new Color(0.12f, 0.45f, 0.98f, 1f),
+            new Color(0.012f, 0.045f, 0.12f, 0.94f),
+            new Color(0.03f, 0.16f, 0.32f, 0.56f)
+        );
+    }
+
+    /// <summary>
+    /// Desliga o HUD de objetivo com dissolução holográfica em degradê contínuo na GPU após a 1ª conta.
+    /// </summary>
+    public void DismissObjectiveHologramAfterFirstQuestion()
+    {
+        if (hasDismissedAfterFirstQuestion) return;
+        hasDismissedAfterFirstQuestion = true;
+
+        if (cornerHudCanvasObj == null || !cornerHudCanvasObj.activeSelf)
+            return;
+
+        if (cornerPulseRoutine != null) StopCoroutine(cornerPulseRoutine);
+        cornerPulseRoutine = StartCoroutine(AnimateHologramGradientDissolveRoutine());
+    }
+
+    private void TryEditorMouseWeaponPickup()
+    {
+#if ENABLE_INPUT_SYSTEM
+        if (physicalWeaponObj == null || UnityEngine.InputSystem.Mouse.current == null) return;
+        if (!UnityEngine.InputSystem.Mouse.current.leftButton.wasPressedThisFrame) return;
+
+        Camera cam = Camera.main;
+        if (cam == null) return;
+
+        Ray ray = cam.ScreenPointToRay(UnityEngine.InputSystem.Mouse.current.position.ReadValue());
+        RaycastHit[] hits = Physics.RaycastAll(ray, 5f, ~0, QueryTriggerInteraction.Collide);
+        if (hits == null || hits.Length == 0) return;
+
         for (int i = 0; i < hits.Length; i++)
         {
             if (hits[i].collider == null) continue;
-            Button btn = hits[i].collider.GetComponentInParent<Button>();
-            if (btn != null && btn.interactable &&
-                ((canvas1Protocolo != null && canvas1Protocolo.activeInHierarchy && btn.transform.IsChildOf(canvas1Protocolo.transform)) ||
-                 (canvas2Arma != null && canvas2Arma.activeInHierarchy && btn.transform.IsChildOf(canvas2Arma.transform))))
+            if (hits[i].collider.transform == physicalWeaponObj.transform ||
+                hits[i].collider.transform.IsChildOf(physicalWeaponObj.transform))
             {
-                inputCooldown = 0.45f;
-                btn.onClick.Invoke();
+                var grab = physicalWeaponObj.GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>();
+                var interactor = FindAnyObjectByType<UnityEngine.XR.Interaction.Toolkit.Interactors.XRBaseInputInteractor>();
+                if (grab != null && interactor != null)
+                {
+                    grab.activated.Invoke(new UnityEngine.XR.Interaction.Toolkit.ActivateEventArgs
+                    {
+                        interactorObject = interactor,
+                        interactableObject = grab
+                    });
+                }
+                break;
+            }
+        }
+#endif
+    }
+
+    private void EnsureWeaponGuideLight()
+    {
+        if (weaponGuideLight != null || physicalWeaponObj == null) return;
+
+        Transform existing = physicalWeaponObj.transform.Find("LuzGuia_ArmaConsole");
+        if (existing != null)
+        {
+            weaponGuideLight = existing.GetComponent<Light>();
+            return;
+        }
+
+        GameObject lightObj = new GameObject("LuzGuia_ArmaConsole");
+        lightObj.transform.SetParent(physicalWeaponObj.transform, false);
+        lightObj.transform.localPosition = new Vector3(0f, 4.5f, 0.5f);
+
+        weaponGuideLight = lightObj.AddComponent<Light>();
+        weaponGuideLight.type = LightType.Point;
+        weaponGuideLight.color = new Color(0.20f, 0.95f, 0.65f, 1f);
+        weaponGuideLight.intensity = 1.25f;
+        weaponGuideLight.range = 0.85f;
+        weaponGuideLight.shadows = LightShadows.None;
+    }
+
+    private void LateUpdate()
+    {
+        if (cornerHudCanvasObj != null && cornerHudCanvasObj.activeSelf)
+        {
+            UpdateCornerHudPlacement();
+            Shader.SetGlobalMatrix(PropWorldToLocal, cornerHudCanvasObj.transform.worldToLocalMatrix);
+        }
+    }
+
+    private bool IsAnyWeaponGrabbed()
+    {
+        for (int i = 0; i < ArmaVR.ActiveControllers.Count; i++)
+        {
+            ArmaVR ctrl = ArmaVR.ActiveControllers[i];
+            if (ctrl != null && ctrl.IsGrabbed)
+            {
                 return true;
             }
         }
         return false;
-    }
-
-    private void TriggerCurrentStepButton()
-    {
-        inputCooldown = 0.5f;
-        if (currentStep == 1)
-        {
-            OnClickEntendiProtocolo();
-        }
-        else if (currentStep == 2)
-        {
-            OnClickIniciarDefesa();
-        }
-    }
-
-    private void ShowCanvas1()
-    {
-        currentStep = 1;
-        if (canvas1Protocolo != null) canvas1Protocolo.SetActive(true);
-        if (canvas2Arma != null) canvas2Arma.SetActive(false);
-        if (group1 != null)
-        {
-            group1.alpha = 1f;
-            StartCoroutine(FadeRoutine(group1, 0f, 1f, 0.3f));
-        }
-    }
-
-    public void OnClickEntendiProtocolo()
-    {
-        if (!isIntroActive || currentStep != 1) return;
-        currentStep = 2;
-        inputCooldown = 0.5f;
-
-        if (GerenteSom.Instance != null) GerenteSom.Instance.PlayClick();
-        StartCoroutine(TransitionToCanvas2Routine());
-    }
-
-    private IEnumerator TransitionToCanvas2Routine()
-    {
-        if (group1 != null) yield return StartCoroutine(FadeRoutine(group1, 1f, 0f, 0.2f));
-        if (canvas1Protocolo != null) canvas1Protocolo.SetActive(false);
-
-        if (canvas2Arma != null) canvas2Arma.SetActive(true);
-        if (group2 != null)
-        {
-            group2.alpha = 0f;
-            yield return StartCoroutine(FadeRoutine(group2, 0f, 1f, 0.3f));
-        }
-    }
-
-    public void OnClickIniciarDefesa()
-    {
-        if (!isIntroActive || currentStep != 2) return;
-        isIntroActive = false;
-        currentStep = 0;
-        inputCooldown = 0.5f;
-
-        if (GerenteSom.Instance != null) GerenteSom.Instance.PlayClick();
-        StartCoroutine(StartDefenseSequenceRoutine());
-    }
-
-    private IEnumerator StartDefenseSequenceRoutine()
-    {
-        if (group2 != null) yield return StartCoroutine(FadeRoutine(group2, 1f, 0f, 0.25f));
-        if (canvas2Arma != null) canvas2Arma.SetActive(false);
-
-        // 1. Exibe o HUD do Cockpit
-        if (InterfaceVR.Instance != null)
-        {
-            InterfaceVR.Instance.SetHUDRootElementsVisible(true);
-            InterfaceVR.Instance.SetCockpitHUDVisible(true);
-        }
-
-        // 2. Libera disparos e inicia a defesa no GerenteDefesa
-        ArmaVR.SetAllCanShoot(true);
-        if (GerenteDefesa.Instance != null)
-        {
-            GerenteDefesa.Instance.StartDefense();
-        }
-    }
-
-    private IEnumerator FadeRoutine(CanvasGroup cg, float from, float to, float duration)
-    {
-        if (cg == null) yield break;
-        float elapsed = 0f;
-        while (elapsed < duration)
-        {
-            elapsed += Time.deltaTime;
-            cg.alpha = Mathf.Lerp(from, to, elapsed / duration);
-            yield return null;
-        }
-        cg.alpha = to;
     }
 
     private void EnsureWeaponInCockpit()
@@ -262,257 +360,506 @@ public class IntroducaoDefesaVR : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Constrói os dois World Space Canvases de história e instruções em frente à cadeira do piloto,
-    /// posicionados acima do painel de controle para que o botão fique 100% visível e clicável.
-    /// </summary>
-    private void EnsureInstructionCanvases()
+    public void OnClickEntendiProtocolo() { }
+    public void OnClickIniciarDefesa() { }
+
+    // =========================================================================
+    // HUD HOLOGRÁFICO SCI-FI NO CANTO DA TELA (GPU SDF + DEGRADÊ CONTÍNUO)
+    // =========================================================================
+
+    private void EnsureHologramMaterials(TMP_FontAsset font)
     {
-        TMP_FontAsset font = Resources.Load<TMP_FontAsset>("Fonts & Materials/LiberationSans SDF");
+        Shader cardShader = Shader.Find("Custom/HologramHUDCard") ?? Shader.Find("UI/Default");
 
-        // Posicionado acima do MainControlPanel, na altura dos olhos do jogador sentado na cadeira
-        Vector3 canvasPos = new Vector3(-0.18f, 1.85f, 1.18f);
-        Quaternion canvasRot = Quaternion.Euler(2f, 0f, 0f);
-
-        // === 1. AO CHEGAR À CENA DE DEFESA ===
-        if (canvas1Protocolo == null)
+        if (cardMainMaterial == null)
         {
-            string msgCanvas1 =
-                "Energia restabelecida. O sistema de defesa da nave foi ativado, mas os danos causados pelo ataque dos piratas espaciais comprometeram o sistema de mira automática.\n\n" +
-                "Os sensores identificaram detritos espaciais que podem atingir a embarcação. Sem a mira automática, você precisará controlar os disparos manualmente.\n\n" +
-                "O computador de bordo fornecerá operações matemáticas para ajudar a identificar os alvos. Resolva cada operação e encontre o detrito que apresenta o resultado correto.\n\n" +
-                "Neutralize as ameaças antes que os escudos da nave se esgotem.";
-
-            canvas1Protocolo = CreateInstructionCanvas(
-                "Canvas1_ProtocoloInterceptacao",
-                canvasPos,
-                canvasRot,
-                "PROTOCOLO DE INTERCEPTAÇÃO",
-                "SISTEMA DE DEFESA ATIVADO",
-                msgCanvas1,
-                "Cuidado: disparos incorretos e impactos dos detritos reduzem a energia dos escudos.",
-                "[ ENTENDI ]",
-                OnClickEntendiProtocolo,
-                font,
-                out group1
-            );
+            cardMainMaterial = new Material(cardShader) { name = "HoloHUD_MainCard_Mat" };
+            cardMainMaterial.SetFloat(PropCardMode, 0f);
         }
 
-        // === 2. INSTRUÇÕES PARA UTILIZAR A ARMA ===
-        if (canvas2Arma == null)
+        if (cardElementMaterial == null)
         {
-            string msgCanvas2 =
-                "A defesa será realizada manualmente. Utilize a arma laser disponível na cabine para destruir os detritos que ameaçam a nave.\n\n" +
-                "<color=#38BDF8><b>COMO JOGAR</b></color>\n" +
-                "1. Pegue a arma utilizando o controle VR.\n" +
-                "2. Observe a operação matemática apresentada no painel.\n" +
-                "3. Resolva a operação.\n" +
-                "4. Localize o detrito identificado com o resultado correto.\n" +
-                "5. Mire no alvo e pressione o gatilho para disparar.\n" +
-                "6. Repita o processo para neutralizar as ameaças restantes.";
+            cardElementMaterial = new Material(cardShader) { name = "HoloHUD_Element_Mat" };
+            cardElementMaterial.SetFloat(PropCardMode, 1f);
+        }
 
-            canvas2Arma = CreateInstructionCanvas(
-                "Canvas2_ControleDaArma",
-                canvasPos,
-                canvasRot,
-                "CONTROLE DA ARMA",
-                "PREPARE-SE PARA A INTERCEPTAÇÃO",
-                msgCanvas2,
-                "Errar o alvo ou permitir que um detrito atinja a nave reduz a energia dos escudos. Se ela chegar a zero, a missão será encerrada.",
-                "[ INICIAR DEFESA ]",
-                OnClickIniciarDefesa,
-                font,
-                out group2
-            );
-            canvas2Arma.SetActive(false);
+        if (cardDividerMaterial == null)
+        {
+            cardDividerMaterial = new Material(cardShader) { name = "HoloHUD_Divider_Mat" };
+            cardDividerMaterial.SetFloat(PropCardMode, 2f);
+        }
+
+        if (holoTmpMaterial == null && font != null && font.material != null)
+        {
+            holoTmpMaterial = new Material(font.material) { name = "LiberationSans_HoloHUD_Mat" };
+            Shader tmpHoloShader = Shader.Find("TextMeshPro/Distance Field - HologramHUD");
+            if (tmpHoloShader != null)
+            {
+                holoTmpMaterial.shader = tmpHoloShader;
+            }
+        }
+
+        EnsureSoftCircleSprite();
+    }
+
+    private static void EnsureSoftCircleSprite()
+    {
+        if (cachedSoftCircleSprite != null) return;
+
+        const int res = 32;
+        Texture2D tex = new Texture2D(res, res, TextureFormat.RGBA32, false)
+        {
+            name = "HoloMoteRadial_Tex",
+            wrapMode = TextureWrapMode.Clamp,
+            filterMode = FilterMode.Bilinear
+        };
+
+        float center = (res - 1) * 0.5f;
+        for (int y = 0; y < res; y++)
+        {
+            for (int x = 0; x < res; x++)
+            {
+                float dx = (x - center) / center;
+                float dy = (y - center) / center;
+                float d = Mathf.Clamp01(Mathf.Sqrt(dx * dx + dy * dy));
+                float alpha = Mathf.Pow(1f - d, 2.4f);
+                tex.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
+            }
+        }
+        tex.Apply(false, false);
+
+        cachedSoftCircleSprite = Sprite.Create(tex, new Rect(0f, 0f, res, res), new Vector2(0.5f, 0.5f), 100f);
+    }
+
+    private void EnsureCornerObjectiveHUD()
+    {
+        if (cornerHudCanvasObj != null) return;
+
+        Camera cam = Camera.main;
+        if (cam == null)
+        {
+            GameObject camObj = GameObject.FindWithTag("MainCamera");
+            if (camObj != null) cam = camObj.GetComponent<Camera>();
+        }
+
+        TMP_FontAsset font = Resources.Load<TMP_FontAsset>("Fonts & Materials/LiberationSans SDF");
+        EnsureHologramMaterials(font);
+
+        cornerHudCanvasObj = new GameObject("CanvasHudObjetivoDefesa");
+        if (cam != null)
+        {
+            cornerHudCanvasObj.transform.SetParent(cam.transform, false);
+        }
+
+        Canvas canvas = cornerHudCanvasObj.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.WorldSpace;
+        canvas.sortingOrder = 120;
+        canvas.worldCamera = cam;
+
+        CanvasScaler scaler = cornerHudCanvasObj.AddComponent<CanvasScaler>();
+        scaler.dynamicPixelsPerUnit = 3.0f;
+
+        RectTransform rootRt = cornerHudCanvasObj.GetComponent<RectTransform>();
+        rootRt.sizeDelta = new Vector2(640f, 230f);
+        rootRt.localScale = cornerHudScale;
+
+        cornerHudCanvasGroup = cornerHudCanvasObj.AddComponent<CanvasGroup>();
+        cornerHudCanvasGroup.alpha = 0f;
+        cornerHudCanvasGroup.interactable = false;
+        cornerHudCanvasGroup.blocksRaycasts = false;
+
+        GameObject panelObj = new GameObject("PainelCanto", typeof(RectTransform));
+        panelObj.transform.SetParent(cornerHudCanvasObj.transform, false);
+        cornerHudPanelRt = panelObj.GetComponent<RectTransform>();
+        cornerHudPanelRt.anchorMin = Vector2.zero;
+        cornerHudPanelRt.anchorMax = Vector2.one;
+        cornerHudPanelRt.offsetMin = Vector2.zero;
+        cornerHudPanelRt.offsetMax = Vector2.zero;
+
+        // 1. Corpo Principal do Holograma Sci-Fi (SDF chanfrado + degradê de vidro + scanlines + cantoneiras na GPU)
+        GameObject cardObj = new GameObject("FundoHologramaSDF", typeof(RectTransform));
+        cardObj.transform.SetParent(panelObj.transform, false);
+        cornerHudMainCardImage = cardObj.AddComponent<Image>();
+        cornerHudMainCardImage.material = cardMainMaterial;
+        cornerHudMainCardImage.color = Color.white;
+        cornerHudMainCardImage.raycastTarget = false;
+        RectTransform cardRt = cardObj.GetComponent<RectTransform>();
+        cardRt.anchorMin = Vector2.zero;
+        cardRt.anchorMax = Vector2.one;
+        cardRt.offsetMin = Vector2.zero;
+        cardRt.offsetMax = Vector2.zero;
+
+        // 2. Título Tático Superior
+        GameObject headerObj = new GameObject("TituloHudCanto", typeof(RectTransform));
+        headerObj.transform.SetParent(panelObj.transform, false);
+        cornerHudHeaderText = headerObj.AddComponent<TextMeshProUGUI>();
+        if (font != null) cornerHudHeaderText.font = font;
+        if (holoTmpMaterial != null) cornerHudHeaderText.fontSharedMaterial = holoTmpMaterial;
+        cornerHudHeaderText.fontSize = 22f;
+        cornerHudHeaderText.fontStyle = FontStyles.Bold;
+        cornerHudHeaderText.characterSpacing = 3.5f;
+        cornerHudHeaderText.alignment = TextAlignmentOptions.MidlineLeft;
+        cornerHudHeaderText.color = new Color(0.22f, 0.92f, 1f, 1f);
+        cornerHudHeaderText.raycastTarget = false;
+        RectTransform headerRt = headerObj.GetComponent<RectTransform>();
+        headerRt.anchorMin = new Vector2(0f, 0.72f);
+        headerRt.anchorMax = new Vector2(0.74f, 0.95f);
+        headerRt.offsetMin = new Vector2(30f, 0f);
+        headerRt.offsetMax = new Vector2(-8f, 0f);
+
+        // 3. Indicadores de Estágio (2 barras de energia no canto superior direito)
+        for (int i = 0; i < 2; i++)
+        {
+            GameObject stepObj = new GameObject($"ProgressoDefesa_{i + 1}", typeof(RectTransform));
+            stepObj.transform.SetParent(panelObj.transform, false);
+            Image stepImg = stepObj.AddComponent<Image>();
+            stepImg.material = cardElementMaterial;
+            stepImg.color = new Color(0.22f, 0.88f, 1f, 0.25f);
+            stepImg.raycastTarget = false;
+            RectTransform stepRt = stepObj.GetComponent<RectTransform>();
+            float xMin = 0.75f + (i * 0.105f);
+            float xMax = xMin + 0.088f;
+            stepRt.anchorMin = new Vector2(xMin, 0.80f);
+            stepRt.anchorMax = new Vector2(xMax, 0.87f);
+            stepRt.offsetMin = Vector2.zero;
+            stepRt.offsetMax = Vector2.zero;
+            cornerHudStepImages[i] = stepImg;
+        }
+
+        // 4. Linha Divisória Laser em Degradê Horizontal
+        GameObject divObj = new GameObject("LinhaDivisoriaDegrade", typeof(RectTransform));
+        divObj.transform.SetParent(panelObj.transform, false);
+        cornerHudDividerImage = divObj.AddComponent<Image>();
+        cornerHudDividerImage.material = cardDividerMaterial;
+        cornerHudDividerImage.color = new Color(1f, 1f, 1f, 0.65f);
+        cornerHudDividerImage.raycastTarget = false;
+        RectTransform divRt = divObj.GetComponent<RectTransform>();
+        divRt.anchorMin = new Vector2(0f, 0.695f);
+        divRt.anchorMax = new Vector2(1f, 0.708f);
+        divRt.offsetMin = new Vector2(28f, 0f);
+        divRt.offsetMax = new Vector2(-24f, 0f);
+
+        // 5. Texto do Objetivo Principal
+        GameObject objTextGO = new GameObject("TextoObjetivoPrincipal", typeof(RectTransform));
+        objTextGO.transform.SetParent(panelObj.transform, false);
+        cornerHudObjectiveText = objTextGO.AddComponent<TextMeshProUGUI>();
+        if (font != null) cornerHudObjectiveText.font = font;
+        if (holoTmpMaterial != null) cornerHudObjectiveText.fontSharedMaterial = holoTmpMaterial;
+        cornerHudObjectiveText.fontSize = 27.5f;
+        cornerHudObjectiveText.fontStyle = FontStyles.Bold;
+        cornerHudObjectiveText.alignment = TextAlignmentOptions.MidlineLeft;
+        cornerHudObjectiveText.textWrappingMode = TextWrappingModes.Normal;
+        cornerHudObjectiveText.color = new Color(0.97f, 0.99f, 1f, 1f);
+        cornerHudObjectiveText.raycastTarget = false;
+        RectTransform objTextRt = objTextGO.GetComponent<RectTransform>();
+        objTextRt.anchorMin = new Vector2(0f, 0.35f);
+        objTextRt.anchorMax = new Vector2(1f, 0.68f);
+        objTextRt.offsetMin = new Vector2(30f, 0f);
+        objTextRt.offsetMax = new Vector2(-22f, 0f);
+
+        // 6. Subtexto de Contexto Tático
+        GameObject ctxTextGO = new GameObject("TextoContextoHistoria", typeof(RectTransform));
+        ctxTextGO.transform.SetParent(panelObj.transform, false);
+        cornerHudContextText = ctxTextGO.AddComponent<TextMeshProUGUI>();
+        if (font != null) cornerHudContextText.font = font;
+        if (holoTmpMaterial != null) cornerHudContextText.fontSharedMaterial = holoTmpMaterial;
+        cornerHudContextText.fontSize = 20.5f;
+        cornerHudContextText.alignment = TextAlignmentOptions.MidlineLeft;
+        cornerHudContextText.textWrappingMode = TextWrappingModes.Normal;
+        cornerHudContextText.color = new Color(0.76f, 0.90f, 1.00f, 0.92f);
+        cornerHudContextText.raycastTarget = false;
+        RectTransform ctxTextRt = ctxTextGO.GetComponent<RectTransform>();
+        ctxTextRt.anchorMin = new Vector2(0f, 0.06f);
+        ctxTextRt.anchorMax = new Vector2(1f, 0.34f);
+        ctxTextRt.offsetMin = new Vector2(30f, 0f);
+        ctxTextRt.offsetMax = new Vector2(-24f, 0f);
+
+        // 7. Partículas de Fótons Holográficos (pré-alocadas para flutuar na borda do degradê ao fechar)
+        for (int i = 0; i < holoMoteRects.Length; i++)
+        {
+            GameObject moteObj = new GameObject($"HoloPhotonMote_{i}", typeof(RectTransform));
+            moteObj.transform.SetParent(panelObj.transform, false);
+            Image moteImg = moteObj.AddComponent<Image>();
+            moteImg.sprite = cachedSoftCircleSprite;
+            moteImg.color = new Color(0.35f, 0.96f, 1f, 0f);
+            moteImg.raycastTarget = false;
+
+            RectTransform moteRt = moteObj.GetComponent<RectTransform>();
+            moteRt.anchorMin = new Vector2(0.5f, 0.5f);
+            moteRt.anchorMax = new Vector2(0.5f, 0.5f);
+            float sz = (i % 3 == 0) ? 16f : 10f;
+            moteRt.sizeDelta = new Vector2(sz, sz);
+
+            moteObj.SetActive(false);
+            holoMoteRects[i] = moteRt;
+            holoMoteImages[i] = moteImg;
+        }
+
+        UpdateCornerHudPlacement();
+        Shader.SetGlobalMatrix(PropWorldToLocal, cornerHudCanvasObj.transform.worldToLocalMatrix);
+    }
+
+    private void UpdateCornerHudPlacement()
+    {
+        if (cornerHudCanvasObj == null) return;
+
+        Camera cam = Camera.main;
+        if (cam == null) return;
+
+        if (cornerHudCanvasObj.transform.parent != cam.transform)
+        {
+            cornerHudCanvasObj.transform.SetParent(cam.transform, false);
+        }
+
+        const float depth = 0.78f;
+        float halfH = depth * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
+        float halfW = halfH * cam.aspect;
+
+        float baseWorldHeight = UnityEngine.XR.XRSettings.isDeviceActive ? (halfH * 0.46f) : (halfH * 0.56f);
+        float compactMultiplier = Mathf.Lerp(1f, 0.68f, combatCompactBlend);
+        float dynamicScale = (baseWorldHeight * compactMultiplier) / 230f;
+
+        float cardHalfW = (640f * dynamicScale) * 0.5f;
+        float cardHalfH = (230f * dynamicScale) * 0.5f;
+
+        float localX;
+        float localY;
+
+        if (UnityEngine.XR.XRSettings.isDeviceActive)
+        {
+            localX = Mathf.Clamp(-halfW * 0.46f, -0.26f, -0.12f);
+            localY = Mathf.Clamp(halfH * Mathf.Lerp(0.46f, 0.54f, combatCompactBlend), 0.10f, 0.22f);
+        }
+        else
+        {
+            localX = -halfW + cardHalfW + (halfW * 0.028f);
+            localY = halfH - cardHalfH - (halfH * Mathf.Lerp(0.042f, 0.025f, combatCompactBlend));
+        }
+
+        cornerHudCanvasObj.transform.localPosition = new Vector3(localX, localY, depth);
+        cornerHudCanvasObj.transform.localRotation = Quaternion.Euler(2f, -4f, 0f);
+        cornerHudCanvasObj.transform.localScale = new Vector3(dynamicScale, dynamicScale, dynamicScale);
+    }
+
+    public void SetCornerObjective(string header, string mainObjective, string context, Color accentColor, Color bgColor)
+    {
+        Color secondary = new Color(accentColor.r * 0.55f, accentColor.g * 0.65f, Mathf.Min(1f, accentColor.b + 0.2f), 1f);
+        Color bgRight = new Color(bgColor.r * 1.8f + 0.02f, bgColor.g * 2.1f + 0.05f, bgColor.b * 2.0f + 0.08f, 0.56f);
+        SetCornerObjective(header, mainObjective, context, accentColor, secondary, bgColor, bgRight);
+    }
+
+    public void SetCornerObjective(
+        string header,
+        string mainObjective,
+        string context,
+        Color accentColor,
+        Color secondaryColor,
+        Color bgLeftColor,
+        Color bgRightColor)
+    {
+        EnsureCornerObjectiveHUD();
+        if (cornerHudCanvasObj == null) return;
+
+        ResetHologramShaderState();
+        ApplyHologramPalette(accentColor, secondaryColor, bgLeftColor, bgRightColor);
+
+        int activeSteps = (!string.IsNullOrEmpty(header) && header.Contains("[2/2]")) ? 2 : 1;
+        for (int i = 0; i < cornerHudStepImages.Length; i++)
+        {
+            if (cornerHudStepImages[i] == null) continue;
+            cornerHudStepImages[i].color = (i < activeSteps)
+                ? new Color(accentColor.r, accentColor.g, accentColor.b, 0.96f)
+                : new Color(accentColor.r, accentColor.g, accentColor.b, 0.20f);
+        }
+
+        if (cornerHudHeaderText != null)
+        {
+            cornerHudHeaderText.color = accentColor;
+            cornerHudHeaderText.text = header;
+        }
+
+        if (cornerHudObjectiveText != null)
+        {
+            cornerHudObjectiveText.text = mainObjective;
+        }
+
+        if (cornerHudContextText != null)
+        {
+            cornerHudContextText.text = context ?? "";
+            cornerHudContextText.gameObject.SetActive(!string.IsNullOrEmpty(context));
+        }
+
+        UpdateCornerHudPlacement();
+        Shader.SetGlobalMatrix(PropWorldToLocal, cornerHudCanvasObj.transform.worldToLocalMatrix);
+        cornerHudCanvasObj.SetActive(true);
+
+        if (cornerPulseRoutine != null) StopCoroutine(cornerPulseRoutine);
+        cornerPulseRoutine = StartCoroutine(AnimateCornerHudAppearRoutine());
+    }
+
+    private void ApplyHologramPalette(Color accent, Color secondary, Color bgLeft, Color bgRight)
+    {
+        Shader.SetGlobalColor(PropAccentColor, accent);
+        Shader.SetGlobalColor(PropSecondaryColor, secondary);
+        Shader.SetGlobalColor(PropBgLeftColor, bgLeft);
+        Shader.SetGlobalColor(PropBgRightColor, bgRight);
+
+        if (cardMainMaterial != null)
+        {
+            cardMainMaterial.SetColor("_AccentColor", accent);
+            cardMainMaterial.SetColor("_SecondaryColor", secondary);
+            cardMainMaterial.SetColor("_BgLeftColor", bgLeft);
+            cardMainMaterial.SetColor("_BgRightColor", bgRight);
+        }
+        if (cardDividerMaterial != null)
+        {
+            cardDividerMaterial.SetColor("_AccentColor", accent);
+            cardDividerMaterial.SetColor("_SecondaryColor", secondary);
         }
     }
 
-    private GameObject CreateInstructionCanvas(
-        string name,
-        Vector3 pos,
-        Quaternion rot,
-        string title,
-        string subtitle,
-        string body,
-        string warning,
-        string buttonText,
-        UnityEngine.Events.UnityAction buttonAction,
-        TMP_FontAsset font,
-        out CanvasGroup group)
+    private void SetHologramDissolveValue(float dissolve)
     {
-        GameObject cObj = new GameObject(name);
-        cObj.transform.position = pos;
-        cObj.transform.rotation = rot;
+        Shader.SetGlobalFloat(PropDissolve, dissolve);
+        if (cardMainMaterial != null) cardMainMaterial.SetFloat(PropLocalDissolve, dissolve);
+        if (cardElementMaterial != null) cardElementMaterial.SetFloat(PropLocalDissolve, dissolve);
+        if (cardDividerMaterial != null) cardDividerMaterial.SetFloat(PropLocalDissolve, dissolve);
+    }
 
-        Canvas canvas = cObj.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.WorldSpace;
-        canvas.sortingOrder = 150;
-        canvas.worldCamera = Camera.main;
+    private void ResetHologramShaderState()
+    {
+        SetHologramDissolveValue(0f);
 
-        cObj.AddComponent<GraphicRaycaster>();
-        if (cObj.GetComponent<TrackedDeviceGraphicRaycaster>() == null)
+        if (cornerHudPanelRt != null)
         {
-            cObj.AddComponent<TrackedDeviceGraphicRaycaster>();
+            cornerHudPanelRt.localScale = Vector3.one;
+            cornerHudPanelRt.anchoredPosition = Vector2.zero;
         }
 
-        RectTransform rt = canvas.GetComponent<RectTransform>();
-        rt.sizeDelta = new Vector2(920f, 580f);
-        rt.localScale = new Vector3(0.0019f, 0.0019f, 0.0019f);
-
-        group = cObj.AddComponent<CanvasGroup>();
-        group.alpha = 1f;
-
-        // Fundo escuro translúcido do cockpit
-        GameObject bgObj = new GameObject("Fundo");
-        bgObj.transform.SetParent(cObj.transform, false);
-        var bgImg = bgObj.AddComponent<Image>();
-        bgImg.color = new Color(0.02f, 0.05f, 0.13f, 0.96f);
-        bgImg.raycastTarget = false;
-        RectTransform bgRt = bgObj.GetComponent<RectTransform>();
-        bgRt.anchorMin = Vector2.zero;
-        bgRt.anchorMax = Vector2.one;
-        bgRt.offsetMin = Vector2.zero;
-        bgRt.offsetMax = Vector2.zero;
-
-        // Borda Superior luminosa
-        GameObject borderTop = new GameObject("BordaTop");
-        borderTop.transform.SetParent(cObj.transform, false);
-        var bImg = borderTop.AddComponent<Image>();
-        bImg.color = new Color(0.22f, 0.74f, 0.97f, 0.9f);
-        bImg.raycastTarget = false;
-        RectTransform bRt = borderTop.GetComponent<RectTransform>();
-        bRt.anchorMin = new Vector2(0.04f, 0.965f);
-        bRt.anchorMax = new Vector2(0.96f, 0.975f);
-        bRt.offsetMin = Vector2.zero;
-        bRt.offsetMax = Vector2.zero;
-
-        // Título
-        GameObject titleObj = new GameObject("Titulo");
-        titleObj.transform.SetParent(cObj.transform, false);
-        var tTxt = titleObj.AddComponent<TextMeshProUGUI>();
-        if (font != null) tTxt.font = font;
-        tTxt.fontSize = 30f;
-        tTxt.fontStyle = FontStyles.Bold;
-        tTxt.alignment = TextAlignmentOptions.Center;
-        tTxt.color = new Color(0.22f, 0.78f, 1f);
-        tTxt.raycastTarget = false;
-        tTxt.text = title;
-        RectTransform tRt = titleObj.GetComponent<RectTransform>();
-        tRt.anchorMin = new Vector2(0.04f, 0.87f);
-        tRt.anchorMax = new Vector2(0.96f, 0.955f);
-        tRt.offsetMin = Vector2.zero;
-        tRt.offsetMax = Vector2.zero;
-
-        // Subtítulo
-        GameObject subObj = new GameObject("Subtitulo");
-        subObj.transform.SetParent(cObj.transform, false);
-        var sTxt = subObj.AddComponent<TextMeshProUGUI>();
-        if (font != null) sTxt.font = font;
-        sTxt.fontSize = 19f;
-        sTxt.fontStyle = FontStyles.Bold;
-        sTxt.alignment = TextAlignmentOptions.Center;
-        sTxt.color = new Color(0.65f, 0.88f, 1f, 0.95f);
-        sTxt.raycastTarget = false;
-        sTxt.text = subtitle;
-        RectTransform sRt = subObj.GetComponent<RectTransform>();
-        sRt.anchorMin = new Vector2(0.04f, 0.80f);
-        sRt.anchorMax = new Vector2(0.96f, 0.87f);
-        sRt.offsetMin = Vector2.zero;
-        sRt.offsetMax = Vector2.zero;
-
-        // Corpo da Mensagem
-        GameObject bodyObj = new GameObject("CorpoTexto");
-        bodyObj.transform.SetParent(cObj.transform, false);
-        var bTxt = bodyObj.AddComponent<TextMeshProUGUI>();
-        if (font != null) bTxt.font = font;
-        bTxt.fontSize = 17.5f;
-        bTxt.lineSpacing = 4f;
-        bTxt.alignment = TextAlignmentOptions.Center;
-        bTxt.textWrappingMode = TextWrappingModes.Normal;
-        bTxt.color = Color.white;
-        bTxt.raycastTarget = false;
-        bTxt.text = body;
-        RectTransform bTextRt = bodyObj.GetComponent<RectTransform>();
-        bTextRt.anchorMin = new Vector2(0.06f, 0.29f);
-        bTextRt.anchorMax = new Vector2(0.94f, 0.79f);
-        bTextRt.offsetMin = Vector2.zero;
-        bTextRt.offsetMax = Vector2.zero;
-
-        // Aviso
-        GameObject warnObj = new GameObject("Aviso");
-        warnObj.transform.SetParent(cObj.transform, false);
-        var wTxt = warnObj.AddComponent<TextMeshProUGUI>();
-        if (font != null) wTxt.font = font;
-        wTxt.fontSize = 16.5f;
-        wTxt.fontStyle = FontStyles.Bold;
-        wTxt.alignment = TextAlignmentOptions.Center;
-        wTxt.textWrappingMode = TextWrappingModes.Normal;
-        wTxt.color = new Color(1f, 0.42f, 0.38f);
-        wTxt.raycastTarget = false;
-        wTxt.text = warning;
-        RectTransform wRt = warnObj.GetComponent<RectTransform>();
-        wRt.anchorMin = new Vector2(0.06f, 0.18f);
-        wRt.anchorMax = new Vector2(0.94f, 0.28f);
-        wRt.offsetMin = Vector2.zero;
-        wRt.offsetMax = Vector2.zero;
-
-        // Botão de ação ([ ENTENDI ] / [ INICIAR DEFESA ]) bem destacado dentro da parte inferior do Canvas
-        GameObject btnObj = new GameObject("BotaoAcao");
-        btnObj.transform.SetParent(cObj.transform, false);
-        RectTransform btnRt = btnObj.AddComponent<RectTransform>();
-        btnRt.anchorMin = new Vector2(0.28f, 0.045f);
-        btnRt.anchorMax = new Vector2(0.72f, 0.155f);
-        btnRt.offsetMin = Vector2.zero;
-        btnRt.offsetMax = Vector2.zero;
-
-        btnObj.AddComponent<CanvasRenderer>();
-        var btnImg = btnObj.AddComponent<Image>();
-        btnImg.color = new Color(0.12f, 0.52f, 0.85f, 1f);
-        btnImg.raycastTarget = true;
-
-        Button btn = btnObj.AddComponent<Button>();
-        ColorBlock cb = btn.colors;
-        cb.normalColor = new Color(0.12f, 0.52f, 0.85f, 1f);
-        cb.highlightedColor = new Color(0.25f, 0.80f, 1.00f, 1.00f);
-        cb.pressedColor = new Color(0.06f, 0.28f, 0.50f, 1.00f);
-        cb.selectedColor = new Color(0.20f, 0.68f, 0.95f, 1.00f);
-        btn.colors = cb;
-        btn.targetGraphic = btnImg;
-        btn.onClick.AddListener(buttonAction);
-
-        BoxCollider col = btnObj.AddComponent<BoxCollider>();
-        col.size = new Vector3(410f, 68f, 30f);
-        col.isTrigger = false;
-
-        // XRSimpleInteractable para permitir clique direto com o raio dos controles VR (Select / Activate)
-        XRSimpleInteractable xrInteractable = btnObj.AddComponent<XRSimpleInteractable>();
-        if (!xrInteractable.colliders.Contains(col))
+        for (int i = 0; i < holoMoteRects.Length; i++)
         {
-            xrInteractable.colliders.Add(col);
+            if (holoMoteRects[i] != null)
+            {
+                holoMoteRects[i].gameObject.SetActive(false);
+            }
         }
-        xrInteractable.selectEntered.AddListener(_ => buttonAction.Invoke());
-        xrInteractable.activated.AddListener(_ => buttonAction.Invoke());
+    }
 
-        GameObject btnTxtObj = new GameObject("Text");
-        btnTxtObj.transform.SetParent(btnObj.transform, false);
-        RectTransform btRt = btnTxtObj.AddComponent<RectTransform>();
-        btRt.anchorMin = Vector2.zero;
-        btRt.anchorMax = Vector2.one;
-        btRt.offsetMin = Vector2.zero;
-        btRt.offsetMax = Vector2.zero;
+    private IEnumerator AnimateCornerHudAppearRoutine()
+    {
+        if (cornerHudCanvasGroup == null || cornerHudPanelRt == null) yield break;
 
-        var btnTmp = btnTxtObj.AddComponent<TextMeshProUGUI>();
-        if (font != null) btnTmp.font = font;
-        btnTmp.fontSize = 23f;
-        btnTmp.fontStyle = FontStyles.Bold;
-        btnTmp.alignment = TextAlignmentOptions.Center;
-        btnTmp.color = Color.white;
-        btnTmp.raycastTarget = false;
-        btnTmp.text = buttonText;
+        // Entrada em degradê suave da esquerda para a direita
+        const float duration = 0.34f;
+        float elapsed = 0f;
 
-        return cObj;
+        while (elapsed < duration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = Mathf.Clamp01(elapsed / duration);
+            float ease = 1f - Mathf.Pow(1f - t, 3f);
+
+            cornerHudCanvasGroup.alpha = ease;
+            SetHologramDissolveValue(Mathf.Lerp(0.45f, 0f, ease));
+            cornerHudPanelRt.localScale = Vector3.Lerp(new Vector3(0.96f, 0.96f, 1f), Vector3.one, ease);
+            yield return null;
+        }
+
+        cornerHudCanvasGroup.alpha = 1f;
+        SetHologramDissolveValue(0f);
+        cornerHudPanelRt.localScale = Vector3.one;
+        cornerPulseRoutine = null;
+    }
+
+    private IEnumerator AnimateHologramGradientDissolveRoutine()
+    {
+        if (cornerHudCanvasGroup == null || cornerHudPanelRt == null)
+        {
+            if (cornerHudCanvasObj != null) cornerHudCanvasObj.SetActive(false);
+            cornerPulseRoutine = null;
+            yield break;
+        }
+
+        // 1. Confirmação visual instantânea de objetivo assimilado (transição suave para Ciano-Esmeralda luminoso)
+        Color startAccent = new Color(0.18f, 0.92f, 1.00f, 1f);
+        Color doneAccent = new Color(0.20f, 1.00f, 0.82f, 1f);
+        Color doneSecondary = new Color(0.12f, 0.72f, 1.00f, 1f);
+        Color bgLeft = new Color(0.012f, 0.055f, 0.12f, 0.94f);
+        Color bgRight = new Color(0.03f, 0.20f, 0.34f, 0.56f);
+
+        if (cornerHudHeaderText != null)
+        {
+            cornerHudHeaderText.text = "SISTEMA DE MIRA CALIBRADO  [OK]";
+            cornerHudHeaderText.color = doneAccent;
+        }
+
+        ApplyHologramPalette(doneAccent, doneSecondary, bgLeft, bgRight);
+
+        // Ativa partículas sutis de fótons holográficos que acompanharão a frente do degradê
+        for (int i = 0; i < holoMoteRects.Length; i++)
+        {
+            if (holoMoteRects[i] != null)
+            {
+                holoMoteRects[i].gameObject.SetActive(true);
+            }
+        }
+
+        // 2. Dissolução contínua em degradê de 62% de largura na GPU (zero rebuild de CPU, 90 FPS cravados)
+        const float duration = 0.88f;
+        float elapsed = 0f;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float rawT = Mathf.Clamp01(elapsed / duration);
+
+            // Curva cúbica suave (aceleração orgânica e final sedoso)
+            float smoothT = rawT * rawT * (3f - 2f * rawT);
+
+            // Atualiza o degradê na GPU (afeta fundo, borda, scanlines e textos simultaneamente)
+            SetHologramDissolveValue(smoothT);
+
+            // Fótons luminosos flutuam suavemente na faixa onde o degradê está evaporando
+            float frontX = Mathf.Lerp(280f, -290f, smoothT);
+            float moteGlobalAlpha = Mathf.Sin(rawT * Mathf.PI);
+
+            for (int i = 0; i < holoMoteRects.Length; i++)
+            {
+                RectTransform mRt = holoMoteRects[i];
+                Image mImg = holoMoteImages[i];
+                if (mRt == null || mImg == null) continue;
+
+                float normIdx = (i / (float)holoMoteRects.Length) - 0.5f;
+                float offsetX = Mathf.Sin(i * 2.1f + rawT * 5f) * 55f;
+                float baseY = normIdx * 175f;
+                float driftY = rawT * (22f + (i % 3) * 12f);
+
+                mRt.anchoredPosition = new Vector2(frontX + offsetX, baseY + driftY);
+                float individualPulse = 0.5f + 0.5f * Mathf.Sin(rawT * 10f + i * 1.7f);
+                mImg.color = new Color(0.35f, 0.98f, 1f, moteGlobalAlpha * individualPulse * 0.78f);
+            }
+
+            // Transparência global complementar nos últimos 35% para garantir desaparecimento 100% imperceptível
+            float tailFade = 1f - Mathf.SmoothStep(0.62f, 1.0f, rawT);
+            cornerHudCanvasGroup.alpha = tailFade;
+
+            // Leve deslize espacial de 1.5% enquanto desmaterializa
+            cornerHudPanelRt.localScale = new Vector3(
+                Mathf.Lerp(1f, 0.985f, smoothT),
+                Mathf.Lerp(1f, 0.975f, smoothT),
+                1f
+            );
+
+            yield return null;
+        }
+
+        cornerHudCanvasGroup.alpha = 0f;
+        ResetHologramShaderState();
+
+        if (cornerHudCanvasObj != null)
+        {
+            cornerHudCanvasObj.SetActive(false);
+        }
+        cornerPulseRoutine = null;
     }
 }
-
-

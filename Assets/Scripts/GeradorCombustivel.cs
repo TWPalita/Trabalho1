@@ -67,11 +67,15 @@ public class GeradorCombustivel : MonoBehaviour
 
         Debug.Log("Gerador ativado!");
 
-        // Inicia a contagem e exibe o objetivo.
+        if (GerenteSom.Instance != null)
+        {
+            GerenteSom.Instance.PlayCorrect();
+        }
+
+        // Dispara o alarme de emergência e atualiza o objetivo no canto da tela de forma única e imediata.
         if (GerenteAlarme.Instance != null)
         {
-            GerenteAlarme.Instance.IniciarContagemAlerta();
-            GerenteAlarme.Instance.MostrarObjetivo();
+            GerenteAlarme.Instance.TriggerAlarm();
         }
         else
         {

@@ -49,6 +49,11 @@ public class LuzesEmergencia : MonoBehaviour
     private bool isEmergencyActive = false;
     private Coroutine flashRoutine;
 
+    // Luzes funcionais de ambientação espacial e guia de objetivos (sem sombras para alta performance em VR)
+    private Light roomGuideLight;
+    private Light generatorGuideLight;
+    private Light cabinGuideLight;
+
     private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
     private static readonly int ColorId = Shader.PropertyToID("_Color");
     private static readonly int EmissionColorId = Shader.PropertyToID("_EmissionColor");
@@ -57,12 +62,37 @@ public class LuzesEmergencia : MonoBehaviour
     {
         FindAndCacheNeons();
         EnsureDefaultLights();
+        EnsureShipAtmosphereLights();
         ResetToNormal();
     }
 
     private void Start()
     {
         EnsurePostProcessingOnCameras();
+        ConfigureSciFiSpaceAmbient();
+    }
+
+    private void OnDestroy()
+    {
+        for (int i = 0; i < originalDataList.Count; i++)
+        {
+            if (originalDataList[i].material != null)
+            {
+                Destroy(originalDataList[i].material);
+            }
+        }
+        originalDataList.Clear();
+    }
+
+    /// <summary>
+    /// Configura a iluminação ambiente da nave para uma atmosfera tecnológica no espaço profundo.
+    /// </summary>
+    private void ConfigureSciFiSpaceAmbient()
+    {
+        RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
+        RenderSettings.ambientSkyColor = new Color(0.16f, 0.24f, 0.36f, 1f);
+        RenderSettings.ambientEquatorColor = new Color(0.12f, 0.16f, 0.24f, 1f);
+        RenderSettings.ambientGroundColor = new Color(0.06f, 0.08f, 0.13f, 1f);
     }
 
     /// <summary>
@@ -251,6 +281,66 @@ public class LuzesEmergencia : MonoBehaviour
         }
     }
 
+    private void EnsureShipAtmosphereLights()
+    {
+        // 1. Luz tecnológica suave no Quarto da Tripulação (onde o jogador desperta)
+        if (roomGuideLight == null)
+        {
+            roomGuideLight = CreateOrGetGuideLight(
+                "LuzAmbiente_Quarto",
+                new Vector3(-3.57f, 2.35f, -6.80f),
+                new Color(0.28f, 0.68f, 0.98f, 1f),
+                1.15f,
+                7.5f
+            );
+        }
+
+        // 2. Luz guia sobre o Gerador Auxiliar e o Galão de Combustível na sala lateral
+        if (generatorGuideLight == null)
+        {
+            generatorGuideLight = CreateOrGetGuideLight(
+                "LuzGuia_Gerador",
+                new Vector3(-9.60f, 2.15f, -1.40f),
+                new Color(0.98f, 0.65f, 0.15f, 1f),
+                1.75f,
+                8.5f
+            );
+        }
+
+        // 3. Luz guia sobre o Console da Cabine de Comando
+        if (cabinGuideLight == null)
+        {
+            cabinGuideLight = CreateOrGetGuideLight(
+                "LuzGuia_Cabine",
+                new Vector3(-3.39f, 2.15f, 8.20f),
+                new Color(0.98f, 0.65f, 0.15f, 1f),
+                1.15f,
+                7.5f
+            );
+        }
+    }
+
+    private Light CreateOrGetGuideLight(string lightName, Vector3 worldPos, Color color, float intensity, float range)
+    {
+        Transform existing = transform.Find(lightName);
+        GameObject lightObj = existing != null ? existing.gameObject : new GameObject(lightName);
+        if (existing == null)
+        {
+            lightObj.transform.SetParent(transform, false);
+        }
+        lightObj.transform.position = worldPos;
+
+        Light l = lightObj.GetComponent<Light>();
+        if (l == null) l = lightObj.AddComponent<Light>();
+        l.type = LightType.Point;
+        l.color = color;
+        l.intensity = intensity;
+        l.range = range;
+        l.shadows = LightShadows.None;
+        l.enabled = true;
+        return l;
+    }
+
     /// <summary>
     /// Inicia o pisca-pisca dos neons e luzes com a cor vermelha e blur luminoso.
     /// </summary>
@@ -258,6 +348,20 @@ public class LuzesEmergencia : MonoBehaviour
     {
         if (isEmergencyActive) return;
         isEmergencyActive = true;
+
+        // Quando o gerador é ligado, a luz guia do gerador passa para verde/ciano (energia ativa)
+        // e a luz da cabine destaca o console frontal para o jogador correr até lá.
+        if (generatorGuideLight != null)
+        {
+            generatorGuideLight.color = new Color(0.20f, 0.88f, 0.58f, 1f);
+            generatorGuideLight.intensity = 1.9f;
+        }
+
+        if (cabinGuideLight != null)
+        {
+            cabinGuideLight.color = new Color(0.22f, 0.80f, 1.0f, 1f);
+            cabinGuideLight.intensity = 2.1f;
+        }
 
         if (flashRoutine != null) StopCoroutine(flashRoutine);
         flashRoutine = StartCoroutine(EmergencyFlashLoop());
@@ -281,27 +385,29 @@ public class LuzesEmergencia : MonoBehaviour
     }
 
     /// <summary>
-    /// Restaura todos os neons e luzes para o estado normal (cores originais, sem emissão vermelha).
+    /// Restaura todos os neons e luzes para o estado inicial (meia-luz tecnológica com luzes guia nos equipamentos).
     /// </summary>
     public void ResetToNormal()
     {
-        // 1. Restaura os materiais originais de cada neon
+        Color standbyEmission = new Color(0.08f, 0.22f, 0.38f, 1f) * 1.25f;
+
+        // 1. Restaura os materiais de cada neon com brilho tecnológico sutil de standby
         foreach (var data in originalDataList)
         {
             if (data.material != null)
             {
                 if (data.material.HasProperty(BaseColorId)) data.material.SetColor(BaseColorId, data.baseColor);
                 if (data.material.HasProperty(ColorId)) data.material.SetColor(ColorId, data.baseColor);
-                if (data.material.HasProperty(EmissionColorId)) data.material.SetColor(EmissionColorId, data.emissionColor);
-
-                if (!data.hadEmissionKeyword)
+                if (data.material.HasProperty(EmissionColorId))
                 {
-                    data.material.DisableKeyword("_EMISSION");
+                    Color targetEmission = data.hadEmissionKeyword ? data.emissionColor : standbyEmission;
+                    data.material.SetColor(EmissionColorId, targetEmission);
+                    data.material.EnableKeyword("_EMISSION");
                 }
             }
         }
 
-        // 2. Desliga as luzes pontuais
+        // 2. Desliga as luzes pontuais de alarme vermelho
         if (emergencyLights != null)
         {
             foreach (var light in emergencyLights)
@@ -312,6 +418,18 @@ public class LuzesEmergencia : MonoBehaviour
                     light.enabled = false;
                 }
             }
+        }
+
+        // 3. Mantém as luzes guia em estado de "aguardando energia" (âmbar no gerador e na cabine)
+        if (generatorGuideLight != null)
+        {
+            generatorGuideLight.color = new Color(0.98f, 0.65f, 0.15f, 1f);
+            generatorGuideLight.intensity = 1.75f;
+        }
+        if (cabinGuideLight != null)
+        {
+            cabinGuideLight.color = new Color(0.98f, 0.65f, 0.15f, 1f);
+            cabinGuideLight.intensity = 1.15f;
         }
     }
 
@@ -325,21 +443,22 @@ public class LuzesEmergencia : MonoBehaviour
             }
         }
 
-        bool isRedState = false;
-        var wait = new WaitForSeconds(flashInterval);
+        float effIntensity = Mathf.Max(maxIntensity, 3.5f);
+        float effMultiplier = Mathf.Max(hdrGlowMultiplier, 4.0f);
+        float cycleDuration = Mathf.Max(0.25f, flashInterval * 2f);
+        float elapsed = 0f;
 
         while (isEmergencyActive)
         {
-            isRedState = !isRedState;
+            elapsed += Time.deltaTime;
+            float phase = (Mathf.Sin((elapsed / cycleDuration) * Mathf.PI * 2f) + 1f) * 0.5f;
+            float smoothPulse = Mathf.SmoothStep(0.08f, 1f, phase);
 
-            Color currentBaseColor = isRedState ? emergencyColor : normalColor;
-            // Emissão HDR multiplicada para ativar o Bloom e criar o blur luminoso de luz real
-            float effIntensity = Mathf.Max(maxIntensity, 3.5f);
-            float effMultiplier = Mathf.Max(hdrGlowMultiplier, 4.0f);
-            Color currentEmission = isRedState ? (emergencyColor * (effIntensity * effMultiplier)) : Color.black;
-            float currentLightIntensity = isRedState ? effIntensity : 0.1f;
+            Color currentBaseColor = Color.Lerp(normalColor, emergencyColor, smoothPulse);
+            Color currentEmission = emergencyColor * (effIntensity * effMultiplier * smoothPulse);
+            float currentLightIntensity = Mathf.Lerp(0.25f, effIntensity, smoothPulse);
 
-            // 1. Atualiza todos os neons de nave/Scene/Lamp
+            // 1. Atualiza todos os neons de nave/Scene/Lamp com pulsação suave
             foreach (var data in originalDataList)
             {
                 if (data.material != null)
@@ -364,7 +483,7 @@ public class LuzesEmergencia : MonoBehaviour
                 }
             }
 
-            yield return wait;
+            yield return null;
         }
 
         ResetToNormal();

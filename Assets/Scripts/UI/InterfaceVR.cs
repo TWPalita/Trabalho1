@@ -4,7 +4,8 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Gerencia as interfaces tridimensionais em World Space adaptadas para conforto e clareza em VR.
+/// Gerencia as interfaces tridimensionais em World Space adaptadas para conforto, nitidez e fluidez em VR.
+/// Organiza o visor matemático, o painel de status (pontos/energia), o feedback tático de tiro e a tela de encerramento.
 /// </summary>
 public class InterfaceVR : MonoBehaviour
 {
@@ -36,6 +37,11 @@ public class InterfaceVR : MonoBehaviour
     [SerializeField] private GameObject panelHologramLabel;
 
     private Coroutine feedbackRoutine;
+    private Coroutine questionPopRoutine;
+    private Coroutine endPanelAnimRoutine;
+
+    private Material controlPanelHoloMat;
+    private Material endPanelHoloMat;
 
     private void Awake()
     {
@@ -47,42 +53,168 @@ public class InterfaceVR : MonoBehaviour
 
     public void ConfigureGameOverLayout()
     {
+        Canvas rootCanvas = GetComponent<Canvas>();
+        if (rootCanvas != null && rootCanvas.worldCamera == null)
+        {
+            rootCanvas.worldCamera = Camera.main;
+        }
+
+        CanvasScaler scaler = GetComponent<CanvasScaler>();
+        if (scaler == null)
+        {
+            scaler = gameObject.AddComponent<CanvasScaler>();
+        }
+        scaler.dynamicPixelsPerUnit = 2.5f;
+
         RectTransform hudRootRt = GetComponent<RectTransform>();
         if (hudRootRt != null && gameObject.name.IndexOf("Cockpit_WorldSpace_HUD", System.StringComparison.OrdinalIgnoreCase) >= 0)
         {
-            hudRootRt.position = new Vector3(-0.18f, 1.48f, 1.35f);
-            hudRootRt.localScale = new Vector3(0.0026f, 0.0026f, 0.0026f);
+            hudRootRt.position = new Vector3(-0.18f, 1.44f, 1.34f);
+            hudRootRt.localScale = new Vector3(0.0024f, 0.0024f, 0.0024f);
         }
 
-        // Posiciona o canva da conta (MathVisor_Border) e os pontos/energia (ControlPanel_Border) mais abaixo, próximos ao painel
+        Shader holoVisorShader = Shader.Find("Custom/CockpitHologramVisor");
+
+        // 1. Visor Holográfico da Rodada e Conta (MathVisor_Border) posicionado mais baixo sobre o console
         Transform mathVisorTr = transform.Find("MathVisor_Border");
         if (mathVisorTr != null)
         {
             RectTransform mathVisorRt = mathVisorTr.GetComponent<RectTransform>();
             if (mathVisorRt != null)
             {
-                mathVisorRt.anchoredPosition = new Vector2(0f, -20f);
+                mathVisorRt.anchoredPosition = new Vector2(0f, -15f);
+                mathVisorRt.sizeDelta = new Vector2(500f, 126f);
+            }
+
+            Image borderBg = mathVisorTr.GetComponent<Image>();
+            if (borderBg != null)
+            {
+                borderBg.color = new Color(1f, 1f, 1f, 0f);
+                borderBg.raycastTarget = false;
+            }
+
+            Transform innerTr = mathVisorTr.Find("MathVisor_Inner");
+            if (innerTr != null)
+            {
+                RectTransform innerRt = innerTr.GetComponent<RectTransform>();
+                if (innerRt != null)
+                {
+                    innerRt.sizeDelta = new Vector2(500f, 126f);
+                }
+
+                HologramVisorEffect visorFx = innerTr.GetComponent<HologramVisorEffect>();
+                if (visorFx != null)
+                {
+                    visorFx.ApplyHologramShaderToVisor();
+                }
             }
         }
 
+        if (roundText != null)
+        {
+            RectTransform rRt = roundText.GetComponent<RectTransform>();
+            if (rRt != null)
+            {
+                rRt.anchoredPosition = new Vector2(0f, 36f);
+                rRt.sizeDelta = new Vector2(460f, 30f);
+            }
+            roundText.fontSize = 18.5f;
+            roundText.fontStyle = FontStyles.Bold;
+            roundText.characterSpacing = 4.5f;
+            roundText.alignment = TextAlignmentOptions.Center;
+            roundText.color = Color.white;
+            roundText.enableVertexGradient = true;
+            roundText.colorGradient = new VertexGradient(
+                new Color(0.65f, 0.99f, 1f, 1f),
+                new Color(0.65f, 0.99f, 1f, 1f),
+                new Color(0.18f, 0.85f, 1f, 1f),
+                new Color(0.18f, 0.85f, 1f, 1f)
+            );
+            roundText.raycastTarget = false;
+        }
+
+        if (mathQuestionText != null)
+        {
+            RectTransform qRt = mathQuestionText.GetComponent<RectTransform>();
+            if (qRt != null)
+            {
+                qRt.anchoredPosition = new Vector2(0f, -12f);
+                qRt.sizeDelta = new Vector2(465f, 70f);
+            }
+            mathQuestionText.fontSize = 50f;
+            mathQuestionText.fontStyle = FontStyles.Bold;
+            mathQuestionText.alignment = TextAlignmentOptions.Center;
+            mathQuestionText.color = Color.white;
+            mathQuestionText.enableVertexGradient = true;
+            mathQuestionText.colorGradient = new VertexGradient(
+                new Color(1f, 0.99f, 0.82f, 1f),
+                new Color(1f, 0.99f, 0.82f, 1f),
+                new Color(0.35f, 0.96f, 1f, 1f),
+                new Color(0.35f, 0.96f, 1f, 1f)
+            );
+            mathQuestionText.raycastTarget = false;
+        }
+
+        // 2. Painel de Status Inferior (ControlPanel_Border) com Shader Holográfico Sci-Fi
         Transform controlBorderTr = transform.Find("ControlPanel_Border");
         if (controlBorderTr != null)
         {
             RectTransform controlBorderRt = controlBorderTr.GetComponent<RectTransform>();
             if (controlBorderRt != null)
             {
-                controlBorderRt.anchoredPosition = new Vector2(0f, -40f);
+                controlBorderRt.anchoredPosition = new Vector2(0f, -185f);
+                controlBorderRt.sizeDelta = new Vector2(860f, 175f);
+            }
+
+            Image ctrlBorderImg = controlBorderTr.GetComponent<Image>();
+            if (ctrlBorderImg != null && holoVisorShader != null)
+            {
+                ctrlBorderImg.color = new Color(1f, 1f, 1f, 0f);
+                ctrlBorderImg.raycastTarget = false;
+            }
+
+            Transform controlInnerTr = controlBorderTr.Find("ControlPanel_Inner");
+            if (controlInnerTr != null)
+            {
+                RectTransform innerRt = controlInnerTr.GetComponent<RectTransform>();
+                if (innerRt != null)
+                {
+                    innerRt.sizeDelta = new Vector2(860f, 175f);
+                }
+
+                Image ctrlInnerImg = controlInnerTr.GetComponent<Image>();
+                if (ctrlInnerImg != null && holoVisorShader != null)
+                {
+                    if (controlPanelHoloMat == null)
+                    {
+                        controlPanelHoloMat = new Material(holoVisorShader) { name = "ControlPanel_HoloSDF_Mat" };
+                    }
+                    controlPanelHoloMat.SetFloat("_VisorMode", 4f);
+                    controlPanelHoloMat.SetColor("_PrimaryColor", new Color(0.18f, 0.88f, 1.0f, 1f));
+                    controlPanelHoloMat.SetColor("_SecondaryColor", new Color(0.08f, 0.42f, 0.92f, 1f));
+                    controlPanelHoloMat.SetColor("_BgColor", new Color(0.01f, 0.05f, 0.13f, 0.68f));
+
+                    ctrlInnerImg.material = controlPanelHoloMat;
+                    ctrlInnerImg.color = Color.white;
+                    ctrlInnerImg.raycastTarget = false;
+                }
             }
         }
 
-        // Sobe somente os pontos (ScoreValue) e a energia com a barra (EnergySegments e EnergyPercent)
+        // 3. Pontos (Esquerda) e Energia (Direita) com largura suficiente para nunca cortar texto
         if (scoreText != null)
         {
             RectTransform scoreValRt = scoreText.GetComponent<RectTransform>();
             if (scoreValRt != null)
             {
-                scoreValRt.anchoredPosition = new Vector2(-300f, -5f);
+                scoreValRt.anchoredPosition = new Vector2(-265f, 6f);
+                scoreValRt.sizeDelta = new Vector2(280f, 44f);
             }
+            scoreText.fontSize = 27f;
+            scoreText.fontStyle = FontStyles.Bold;
+            scoreText.alignment = TextAlignmentOptions.Center;
+            scoreText.textWrappingMode = TextWrappingModes.NoWrap;
+            scoreText.raycastTarget = false;
         }
 
         if (energySegmentedText != null)
@@ -90,8 +222,13 @@ public class InterfaceVR : MonoBehaviour
             RectTransform energySegRt = energySegmentedText.GetComponent<RectTransform>();
             if (energySegRt != null)
             {
-                energySegRt.anchoredPosition = new Vector2(300f, 2f);
+                energySegRt.anchoredPosition = new Vector2(265f, 18f);
+                energySegRt.sizeDelta = new Vector2(280f, 34f);
             }
+            energySegmentedText.fontSize = 21f;
+            energySegmentedText.alignment = TextAlignmentOptions.Center;
+            energySegmentedText.textWrappingMode = TextWrappingModes.NoWrap;
+            energySegmentedText.raycastTarget = false;
         }
 
         if (energyText != null)
@@ -99,35 +236,68 @@ public class InterfaceVR : MonoBehaviour
             RectTransform energyPctRt = energyText.GetComponent<RectTransform>();
             if (energyPctRt != null)
             {
-                energyPctRt.anchoredPosition = new Vector2(300f, -32f);
+                energyPctRt.anchoredPosition = new Vector2(265f, -16f);
+                energyPctRt.sizeDelta = new Vector2(280f, 30f);
             }
+            energyText.fontSize = 18f;
+            energyText.fontStyle = FontStyles.Bold;
+            energyText.alignment = TextAlignmentOptions.Center;
+            energyText.textWrappingMode = TextWrappingModes.NoWrap;
+            energyText.raycastTarget = false;
         }
 
+        // 4. Banner Central de Feedback Tático (Acerto / Erro)
         if (feedbackText != null)
         {
             RectTransform fbRt = feedbackText.GetComponent<RectTransform>();
             if (fbRt != null)
             {
-                fbRt.anchoredPosition = new Vector2(0f, 72f);
-                fbRt.sizeDelta = new Vector2(860f, 110f);
+                fbRt.anchoredPosition = new Vector2(0f, 4f);
+                fbRt.sizeDelta = new Vector2(310f, 70f);
             }
-            feedbackText.fontSize = 22f;
+            feedbackText.fontSize = 20f;
+            feedbackText.fontStyle = FontStyles.Bold;
             feedbackText.alignment = TextAlignmentOptions.Center;
             feedbackText.textWrappingMode = TextWrappingModes.Normal;
+            feedbackText.raycastTarget = false;
         }
 
         if (gameOverPanel == null) return;
 
+        // 5. Painel de Fim de Jogo / Vitória (posicionado mais alto no para-brisa para leitura confortável)
         RectTransform panelRt = gameOverPanel.GetComponent<RectTransform>();
         if (panelRt != null)
         {
-            panelRt.sizeDelta = new Vector2(880f, 650f);
+            panelRt.sizeDelta = new Vector2(880f, 620f);
             panelRt.anchoredPosition = new Vector2(0f, 140f);
-            panelRt.localPosition = new Vector3(0f, 140f, -60f);
-            panelRt.localScale = new Vector3(0.90f, 0.90f, 1f);
+            panelRt.localPosition = new Vector3(0f, 140f, -45f);
+            panelRt.localScale = new Vector3(0.92f, 0.92f, 1f);
         }
 
-        // 1. Título
+        Image panelBg = gameOverPanel.GetComponent<Image>();
+        if (panelBg != null)
+        {
+            if (holoVisorShader != null)
+            {
+                if (endPanelHoloMat == null)
+                {
+                    endPanelHoloMat = new Material(holoVisorShader) { name = "EndPanel_HoloSDF_Mat" };
+                }
+                endPanelHoloMat.SetFloat("_VisorMode", 3f);
+                endPanelHoloMat.SetColor("_PrimaryColor", new Color(0.20f, 1.00f, 0.72f, 1f));
+                endPanelHoloMat.SetColor("_SecondaryColor", new Color(0.12f, 0.75f, 1.00f, 1f));
+                endPanelHoloMat.SetColor("_BgColor", new Color(0.01f, 0.06f, 0.14f, 0.80f));
+
+                panelBg.material = endPanelHoloMat;
+                panelBg.color = Color.white;
+            }
+            else
+            {
+                panelBg.color = new Color(0.02f, 0.05f, 0.13f, 0.94f);
+            }
+            panelBg.raycastTarget = false;
+        }
+
         Transform titleTr = gameOverPanel.transform.Find("Title");
         TMP_FontAsset sharedFont = gameOverScoreText != null ? gameOverScoreText.font : null;
         if (titleTr != null)
@@ -135,20 +305,20 @@ public class InterfaceVR : MonoBehaviour
             RectTransform titleRt = titleTr.GetComponent<RectTransform>();
             if (titleRt != null)
             {
-                titleRt.anchoredPosition = new Vector2(0f, 255f);
-                titleRt.sizeDelta = new Vector2(800f, 56f);
+                titleRt.anchoredPosition = new Vector2(0f, 245f);
+                titleRt.sizeDelta = new Vector2(800f, 54f);
             }
             TMP_Text titleTxt = titleTr.GetComponent<TMP_Text>();
             if (titleTxt != null)
             {
-                titleTxt.fontSize = 38f;
+                titleTxt.fontSize = 36f;
                 titleTxt.fontStyle = FontStyles.Bold;
                 titleTxt.alignment = TextAlignmentOptions.Center;
+                titleTxt.raycastTarget = false;
                 if (sharedFont == null) sharedFont = titleTxt.font;
             }
         }
 
-        // 1b. Subtítulo ("Subtitle")
         Transform subTr = gameOverPanel.transform.Find("Subtitle");
         if (subTr == null)
         {
@@ -162,8 +332,8 @@ public class InterfaceVR : MonoBehaviour
             subRt.anchorMin = new Vector2(0.5f, 0.5f);
             subRt.anchorMax = new Vector2(0.5f, 0.5f);
             subRt.pivot = new Vector2(0.5f, 0.5f);
-            subRt.anchoredPosition = new Vector2(0f, 202f);
-            subRt.sizeDelta = new Vector2(800f, 40f);
+            subRt.anchoredPosition = new Vector2(0f, 195f);
+            subRt.sizeDelta = new Vector2(800f, 36f);
         }
         TMP_Text subTxt = subTr.GetComponent<TMP_Text>();
         if (subTxt == null)
@@ -171,69 +341,76 @@ public class InterfaceVR : MonoBehaviour
             subTxt = subTr.gameObject.AddComponent<TextMeshProUGUI>();
         }
         if (sharedFont != null) subTxt.font = sharedFont;
-        subTxt.fontSize = 24f;
+        subTxt.fontSize = 21f;
         subTxt.fontStyle = FontStyles.Bold;
         subTxt.alignment = TextAlignmentOptions.Center;
         subTxt.raycastTarget = false;
 
-        // 2. Texto de mensagem ("FinalScore")
         if (gameOverScoreText != null)
         {
             RectTransform scoreRt = gameOverScoreText.GetComponent<RectTransform>();
             if (scoreRt != null)
             {
-                scoreRt.anchoredPosition = new Vector2(0f, 45f);
-                scoreRt.sizeDelta = new Vector2(780f, 235f);
+                scoreRt.anchoredPosition = new Vector2(0f, 22f);
+                scoreRt.sizeDelta = new Vector2(780f, 260f);
             }
-            gameOverScoreText.fontSize = 23f;
-            gameOverScoreText.lineSpacing = 12f;
+            gameOverScoreText.fontSize = 22f;
+            gameOverScoreText.lineSpacing = 8f;
             gameOverScoreText.alignment = TextAlignmentOptions.Center;
             gameOverScoreText.textWrappingMode = TextWrappingModes.Normal;
+            gameOverScoreText.raycastTarget = false;
         }
 
-        // 3. Botão Recomeçar ("BtnRestart")
-        if (btnRestart != null)
-        {
-            RectTransform restartRt = btnRestart.GetComponent<RectTransform>();
-            if (restartRt != null)
-            {
-                restartRt.anchoredPosition = new Vector2(0f, -145f);
-                restartRt.sizeDelta = new Vector2(420f, 62f);
-            }
-            BoxCollider col = btnRestart.GetComponent<BoxCollider>();
-            if (col == null) col = btnRestart.gameObject.AddComponent<BoxCollider>();
-            col.size = new Vector3(420f, 62f, 20f);
-            col.isTrigger = false;
+        ConfigureEndButton(btnRestart, new Vector2(0f, -175f), new Vector2(440f, 64f), new Color(0.12f, 0.52f, 0.84f, 0.96f));
 
-            var xrInt = btnRestart.GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRSimpleInteractable>();
-            if (xrInt == null)
-            {
-                xrInt = btnRestart.gameObject.AddComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRSimpleInteractable>();
-            }
-            if (!xrInt.colliders.Contains(col)) xrInt.colliders.Add(col);
-        }
-
-        // 4. Botão Voltar ao Início ("BtnReturnShip")
+        // Oculta a opção de voltar para a nave conforme solicitado
         if (btnReturnToShip != null)
         {
-            RectTransform returnRt = btnReturnToShip.GetComponent<RectTransform>();
-            if (returnRt != null)
-            {
-                returnRt.anchoredPosition = new Vector2(0f, -230f);
-                returnRt.sizeDelta = new Vector2(420f, 62f);
-            }
-            BoxCollider col = btnReturnToShip.GetComponent<BoxCollider>();
-            if (col == null) col = btnReturnToShip.gameObject.AddComponent<BoxCollider>();
-            col.size = new Vector3(420f, 62f, 20f);
-            col.isTrigger = false;
-
-            var xrInt = btnReturnToShip.GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRSimpleInteractable>();
-            if (xrInt == null)
-            {
-                xrInt = btnReturnToShip.gameObject.AddComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRSimpleInteractable>();
-            }
-            if (!xrInt.colliders.Contains(col)) xrInt.colliders.Add(col);
+            btnReturnToShip.gameObject.SetActive(false);
         }
+        if (btnConsoleReturnShip != null)
+        {
+            btnConsoleReturnShip.gameObject.SetActive(false);
+        }
+    }
+
+    private void ConfigureEndButton(Button btn, Vector2 pos, Vector2 size, Color normalColor)
+    {
+        if (btn == null) return;
+
+        RectTransform rt = btn.GetComponent<RectTransform>();
+        if (rt != null)
+        {
+            rt.anchoredPosition = pos;
+            rt.sizeDelta = size;
+        }
+
+        Image img = btn.GetComponent<Image>();
+        if (img != null)
+        {
+            img.color = normalColor;
+            img.raycastTarget = true;
+        }
+
+        ColorBlock cb = btn.colors;
+        cb.normalColor = normalColor;
+        cb.highlightedColor = new Color(Mathf.Min(1f, normalColor.r + 0.18f), Mathf.Min(1f, normalColor.g + 0.25f), 1f, 1f);
+        cb.pressedColor = normalColor * 0.65f;
+        cb.selectedColor = cb.highlightedColor;
+        cb.fadeDuration = 0.08f;
+        btn.colors = cb;
+
+        BoxCollider col = btn.GetComponent<BoxCollider>();
+        if (col == null) col = btn.gameObject.AddComponent<BoxCollider>();
+        col.size = new Vector3(size.x, size.y, 24f);
+        col.isTrigger = false;
+
+        var xrInt = btn.GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRSimpleInteractable>();
+        if (xrInt == null)
+        {
+            xrInt = btn.gameObject.AddComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRSimpleInteractable>();
+        }
+        if (!xrInt.colliders.Contains(col)) xrInt.colliders.Add(col);
     }
 
     public void SetHUDRootElementsVisible(bool visible)
@@ -277,13 +454,7 @@ public class InterfaceVR : MonoBehaviour
 
         if (btnConsoleReturnShip != null)
         {
-            btnConsoleReturnShip.onClick.AddListener(() =>
-            {
-                if (GerenteSom.Instance != null) GerenteSom.Instance.PlayClick();
-                GerenteDefesa def = GerenteDefesa.Instance != null ? GerenteDefesa.Instance : FindAnyObjectByType<GerenteDefesa>();
-                if (def != null) def.ReturnToShip();
-                else UnityEngine.SceneManagement.SceneManager.LoadScene("SampleScene");
-            });
+            btnConsoleReturnShip.gameObject.SetActive(false);
         }
 
         if (btnRestart != null)
@@ -306,21 +477,7 @@ public class InterfaceVR : MonoBehaviour
 
         if (btnReturnToShip != null)
         {
-            UnityEngine.Events.UnityAction returnAction = () =>
-            {
-                if (GerenteSom.Instance != null) GerenteSom.Instance.PlayClick();
-                GerenteDefesa def = GerenteDefesa.Instance != null ? GerenteDefesa.Instance : FindAnyObjectByType<GerenteDefesa>();
-                if (def != null) def.ReturnToShip();
-                else UnityEngine.SceneManagement.SceneManager.LoadScene("SampleScene");
-            };
-            btnReturnToShip.onClick.AddListener(returnAction);
-
-            var xrInt = btnReturnToShip.GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRSimpleInteractable>();
-            if (xrInt != null)
-            {
-                xrInt.selectEntered.AddListener(_ => returnAction());
-                xrInt.activated.AddListener(_ => returnAction());
-            }
+            btnReturnToShip.gameObject.SetActive(false);
         }
 
         if (GerentePontuacao.Instance != null)
@@ -335,6 +492,38 @@ public class InterfaceVR : MonoBehaviour
         if (feedbackText != null) feedbackText.gameObject.SetActive(false);
     }
 
+    private void Update()
+    {
+        // Permite clicar nos botões da tela de Vitória/Derrota com o mouse no Editor / Simulador XR
+#if ENABLE_INPUT_SYSTEM
+        if (gameOverPanel != null && gameOverPanel.activeInHierarchy &&
+            UnityEngine.InputSystem.Mouse.current != null &&
+            UnityEngine.InputSystem.Mouse.current.leftButton.wasPressedThisFrame)
+        {
+            Camera cam = Camera.main;
+            if (cam != null)
+            {
+                Ray ray = cam.ScreenPointToRay(UnityEngine.InputSystem.Mouse.current.position.ReadValue());
+                RaycastHit[] hits = Physics.RaycastAll(ray, 25f, ~0, QueryTriggerInteraction.Collide);
+                if (hits != null && hits.Length > 0)
+                {
+                    System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+                    for (int i = 0; i < hits.Length; i++)
+                    {
+                        if (hits[i].collider == null) continue;
+                        Button b = hits[i].collider.GetComponentInParent<Button>();
+                        if (b != null && b.interactable && b.transform.IsChildOf(gameOverPanel.transform))
+                        {
+                            b.onClick.Invoke();
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+#endif
+    }
+
     private void OnDestroy()
     {
         if (GerentePontuacao.Instance != null)
@@ -342,6 +531,8 @@ public class InterfaceVR : MonoBehaviour
             GerentePontuacao.Instance.OnScoreChanged -= UpdateScoreDisplay;
             GerentePontuacao.Instance.OnEnergyChanged -= UpdateEnergyDisplay;
         }
+        if (controlPanelHoloMat != null) Destroy(controlPanelHoloMat);
+        if (endPanelHoloMat != null) Destroy(endPanelHoloMat);
     }
 
     #region HUD do Cockpit
@@ -358,15 +549,45 @@ public class InterfaceVR : MonoBehaviour
     {
         if (mathQuestionText != null)
         {
+            int len = string.IsNullOrEmpty(question) ? 0 : question.Length;
+            bool isTextPrompt = !string.IsNullOrEmpty(question) && !question.Contains("=") && !question.Contains("?");
+            if (isTextPrompt)
+            {
+                mathQuestionText.fontSize = 34f;
+            }
+            else if (len >= 15)
+            {
+                mathQuestionText.fontSize = 37f;
+            }
+            else if (len >= 12)
+            {
+                mathQuestionText.fontSize = 42f;
+            }
+            else
+            {
+                mathQuestionText.fontSize = 48f;
+            }
+            mathQuestionText.textWrappingMode = TextWrappingModes.NoWrap;
             mathQuestionText.text = question;
+            if (gameObject.activeInHierarchy)
+            {
+                if (questionPopRoutine != null) StopCoroutine(questionPopRoutine);
+                questionPopRoutine = StartCoroutine(PopTextScaleRoutine(mathQuestionText.transform, 1.16f, 0.18f));
+            }
         }
     }
 
-    public void UpdateRound(int round)
+    public void UpdateRound(int round, int totalRounds = 10)
     {
         if (roundText != null)
         {
-            roundText.text = $"RODADA {round}";
+            roundText.text = totalRounds > 0
+                ? $"[  •  RODADA {round} / {totalRounds}  •  ]"
+                : $"[  •  RODADA {round}  •  ]";
+        }
+        if (HologramVisorEffect.Instance != null)
+        {
+            HologramVisorEffect.Instance.TriggerNewRoundPulse();
         }
     }
 
@@ -382,13 +603,13 @@ public class InterfaceVR : MonoBehaviour
     {
         if (energyText != null)
         {
-            energyText.text = $"ENERGIA: {current}%";
+            energyText.text = $"ESCUDOS: {current}%";
         }
         if (energyFillImage != null)
         {
             float fill = (float)current / Mathf.Max(1, max);
             energyFillImage.fillAmount = fill;
-            energyFillImage.color = fill > 0.5f ? Color.green : (fill > 0.25f ? Color.yellow : Color.red);
+            energyFillImage.color = fill > 0.5f ? new Color(0.2f, 0.95f, 0.45f) : (fill > 0.25f ? new Color(1f, 0.82f, 0.2f) : new Color(1f, 0.25f, 0.25f));
         }
         if (energySegmentedText != null)
         {
@@ -397,23 +618,72 @@ public class InterfaceVR : MonoBehaviour
             string blocks = new string('█', activeBlocks).PadRight(totalBlocks, '░');
             energySegmentedText.text = blocks;
 
-            if (current > 50) energySegmentedText.color = new Color(0.2f, 1f, 0.4f, 1f);
+            if (current > 50) energySegmentedText.color = new Color(0.2f, 1f, 0.45f, 1f);
             else if (current > 20) energySegmentedText.color = new Color(1f, 0.85f, 0.2f, 1f);
-            else energySegmentedText.color = new Color(1f, 0.25f, 0.25f, 1f);
+            else energySegmentedText.color = new Color(1f, 0.28f, 0.28f, 1f);
         }
     }
 
     public void ShowFeedback(bool isCorrect, string message)
     {
+        if (feedbackText == null || !gameObject.activeInHierarchy) return;
+
         if (feedbackRoutine != null)
         {
             StopCoroutine(feedbackRoutine);
-            feedbackRoutine = null;
         }
-        if (feedbackText != null)
+        feedbackRoutine = StartCoroutine(ShowFeedbackRoutine(isCorrect, message));
+    }
+
+    private IEnumerator ShowFeedbackRoutine(bool isCorrect, string message)
+    {
+        feedbackText.gameObject.SetActive(true);
+        feedbackText.color = isCorrect
+            ? new Color(0.22f, 1f, 0.55f, 1f)
+            : new Color(1f, 0.35f, 0.32f, 1f);
+        feedbackText.text = message;
+
+        Transform fbTr = feedbackText.transform;
+        float popElapsed = 0f;
+        while (popElapsed < 0.14f)
         {
-            feedbackText.gameObject.SetActive(false);
+            popElapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(popElapsed / 0.14f);
+            float s = Mathf.Lerp(1.22f, 1.0f, t);
+            fbTr.localScale = new Vector3(s, s, 1f);
+            yield return null;
         }
+        fbTr.localScale = Vector3.one;
+
+        yield return new WaitForSeconds(0.75f);
+
+        Color baseCol = feedbackText.color;
+        float fadeElapsed = 0f;
+        while (fadeElapsed < 0.22f)
+        {
+            fadeElapsed += Time.deltaTime;
+            float a = Mathf.Lerp(1f, 0f, fadeElapsed / 0.22f);
+            feedbackText.color = new Color(baseCol.r, baseCol.g, baseCol.b, a);
+            yield return null;
+        }
+
+        feedbackText.gameObject.SetActive(false);
+        feedbackRoutine = null;
+    }
+
+    private IEnumerator PopTextScaleRoutine(Transform tr, float peakScale, float duration)
+    {
+        if (tr == null) yield break;
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / duration);
+            float s = Mathf.Lerp(peakScale, 1f, 1f - Mathf.Pow(1f - t, 2f));
+            tr.localScale = new Vector3(s, s, 1f);
+            yield return null;
+        }
+        tr.localScale = Vector3.one;
     }
 
     private void SetEndScreenTexts(
@@ -463,33 +733,44 @@ public class InterfaceVR : MonoBehaviour
 
         if (btnReturnToShip != null)
         {
-            TMP_Text returnTxt = btnReturnToShip.GetComponentInChildren<TMP_Text>(true);
-            if (returnTxt != null) returnTxt.text = returnBtnLabel;
+            btnReturnToShip.gameObject.SetActive(false);
         }
     }
 
     public void ShowVictory(int finalScore = 0, int correct = 0, int wrong = 0, float accuracy = 0f, int rounds = 1)
     {
+        HologramVisorEffect.SetSpaceTravelActive(true);
+
         if (gameOverPanel != null)
         {
             if (feedbackText != null) feedbackText.gameObject.SetActive(false);
             ConfigureGameOverLayout();
             SetBackgroundHUDPanelsVisible(false);
 
+            if (endPanelHoloMat != null)
+            {
+                endPanelHoloMat.SetColor("_PrimaryColor", new Color(0.20f, 1.00f, 0.72f, 1f));
+                endPanelHoloMat.SetColor("_SecondaryColor", new Color(0.14f, 0.80f, 1.00f, 1f));
+                endPanelHoloMat.SetColor("_BgColor", new Color(0.01f, 0.06f, 0.14f, 0.76f));
+            }
+
+            string statsLine = $"<size=95%><color=#38BDF8><b>PONTOS: {finalScore:D4}   |   PRECISÃO: {accuracy:F0}%   |   RODADAS: {rounds}/10</b></color></size>\n\n";
+
             SetEndScreenTexts(
-                "DEFESA BEM-SUCEDIDA",
-                new Color(0.25f, 1f, 0.55f, 1f),
-                "ROTA SEGURA",
-                new Color(0.35f, 0.9f, 1f, 1f),
-                "Todos os detritos previstos para esta interceptação foram neutralizados.\n" +
-                "A nave está protegida e a rota foi liberada. Mesmo após o ataque dos piratas espaciais, você conseguiu restaurar a energia e defender a embarcação.\n" +
-                "Graças à sua atenção e aos seus cálculos, a jornada pode continuar.\n" +
-                "Missão concluída. Boa viagem, viajante!",
-                "[ JOGAR NOVAMENTE ]",
-                "[ VOLTAR AO INÍCIO ]"
+                "PARABÉNS, COMANDANTE!",
+                new Color(0.25f, 1f, 0.62f, 1f),
+                "•  DEFESA CONCLUÍDA  |  VIAGEM ESPACIAL EM CURSO  •",
+                new Color(0.38f, 0.94f, 1f, 1f),
+                statsLine +
+                "Você neutralizou todos os meteoros e salvou a espaçonave!\n" +
+                "Graças à sua agilidade e precisão nos cálculos, a rota foi liberada, os propulsores de dobra foram acionados e a nave já está viajando em segurança pelo espaço.\n" +
+                "<color=#6EE7B7><b>Excelente trabalho! Boa viagem pelas estrelas!</b></color>",
+                "JOGAR NOVAMENTE  >>",
+                ""
             );
 
             gameOverPanel.SetActive(true);
+            AnimateEndPanelIn();
         }
     }
 
@@ -500,30 +781,69 @@ public class InterfaceVR : MonoBehaviour
 
     public void ShowGameOver(int finalScore, int correct, int wrong, float accuracy, int rounds)
     {
+        HologramVisorEffect.SetSpaceTravelActive(false);
+
         if (gameOverPanel != null)
         {
             if (feedbackText != null) feedbackText.gameObject.SetActive(false);
             ConfigureGameOverLayout();
             SetBackgroundHUDPanelsVisible(false);
 
+            if (endPanelHoloMat != null)
+            {
+                endPanelHoloMat.SetColor("_PrimaryColor", new Color(1.00f, 0.32f, 0.28f, 1f));
+                endPanelHoloMat.SetColor("_SecondaryColor", new Color(1.00f, 0.68f, 0.18f, 1f));
+                endPanelHoloMat.SetColor("_BgColor", new Color(0.11f, 0.02f, 0.04f, 0.84f));
+            }
+
+            string statsLine = $"<size=92%><color=#FBBF24><b>PONTOS: {finalScore:D4}   |   ACERTOS: {correct}   |   PRECISÃO: {accuracy:F0}%</b></color></size>\n\n";
+
             SetEndScreenTexts(
                 "NAVE DESTRUÍDA",
-                new Color(1f, 0.3f, 0.3f, 1f),
-                "OS ESCUDOS FALHARAM",
+                new Color(1f, 0.32f, 0.32f, 1f),
+                "•  OS ESCUDOS FALHARAM  •",
                 new Color(1f, 0.78f, 0.25f, 1f),
-                "Os impactos dos detritos comprometeram os escudos da nave, e a energia chegou a zero.\n" +
-                "A missão de defesa falhou. A embarcação não conseguiu resistir aos danos.\n" +
-                "Você pode tentar novamente, resolver as operações com atenção e neutralizar os alvos antes que seja tarde demais.",
-                "[ TENTAR NOVAMENTE ]",
-                "[ VOLTAR AO INÍCIO ]"
+                statsLine +
+                "Os impactos comprometeram os escudos da nave e a energia chegou a zero.\n" +
+                "Você pode tentar novamente agora mesmo: resolva as operações no visor e neutralize os detritos corretos para proteger a embarcação!",
+                "TENTAR NOVAMENTE  >>",
+                ""
             );
 
             gameOverPanel.SetActive(true);
+            AnimateEndPanelIn();
         }
+    }
+
+    private void AnimateEndPanelIn()
+    {
+        if (!gameObject.activeInHierarchy || gameOverPanel == null) return;
+        if (endPanelAnimRoutine != null) StopCoroutine(endPanelAnimRoutine);
+        endPanelAnimRoutine = StartCoroutine(AnimateEndPanelRoutine());
+    }
+
+    private IEnumerator AnimateEndPanelRoutine()
+    {
+        Transform tr = gameOverPanel.transform;
+        Vector3 startScale = new Vector3(0.84f, 0.84f, 1f);
+        Vector3 endScale = new Vector3(0.92f, 0.92f, 1f);
+        float elapsed = 0f;
+        float duration = 0.28f;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = 1f - Mathf.Pow(1f - Mathf.Clamp01(elapsed / duration), 3f);
+            tr.localScale = Vector3.LerpUnclamped(startScale, endScale, t);
+            yield return null;
+        }
+        tr.localScale = endScale;
     }
 
     public void HideGameOverPanel()
     {
+        HologramVisorEffect.SetSpaceTravelActive(false);
+
         if (gameOverPanel != null)
         {
             gameOverPanel.SetActive(false);
@@ -578,5 +898,3 @@ public static class InterfaceVREditorAutoSetup
     }
 }
 #endif
-
-

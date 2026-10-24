@@ -59,6 +59,9 @@ public class Detrito : MonoBehaviour
     private GerenteDefesa manager;
     private Material targetMaterial;
     private Color originalMeshColor = Color.white;
+    private Transform cachedCamTransform;
+    private float currentBadgeScale = 0.011f;
+    private float spawnAnimProgress = 0f;
 
     private static Mesh cachedMeteorMesh;
     private static Material cachedMeteorMaterial;
@@ -127,6 +130,7 @@ public class Detrito : MonoBehaviour
         {
             targetMaterial = meshRenderer.material;
             originalMeshColor = targetMaterial.color;
+            ApplyIdleSpaceRelief();
         }
 
         // Ajusta a escala do detrito para leitura e mira confortáveis a partir da câmera fixa na cadeira
@@ -164,11 +168,14 @@ public class Detrito : MonoBehaviour
         }
 
         labelContainer = canvas.transform;
+        CanvasScaler scaler = canvas.GetComponent<CanvasScaler>();
+        if (scaler == null) scaler = canvas.gameObject.AddComponent<CanvasScaler>();
+        scaler.dynamicPixelsPerUnit = 2.5f;
 
         RectTransform canvasRT = canvas.GetComponent<RectTransform>();
         if (canvasRT != null)
         {
-            canvasRT.sizeDelta = new Vector2(165f, 88f);
+            canvasRT.sizeDelta = new Vector2(174f, 92f);
             canvasRT.localScale = new Vector3(0.011f, 0.011f, 0.011f);
             canvasRT.anchoredPosition = Vector2.zero;
             canvasRT.localPosition = new Vector3(0f, -numberYOffset / Mathf.Max(1f, transform.localScale.y), 0f);
@@ -217,6 +224,9 @@ public class Detrito : MonoBehaviour
             if (badgeBackground != null) badgeBackground.color = badgeNormalColor;
         }
 
+        if (badgeBorder != null) badgeBorder.raycastTarget = false;
+        if (badgeBackground != null) badgeBackground.raycastTarget = false;
+
         // 3. Localiza e configura o TMP_Text
         if (textoDoNumero == null)
         {
@@ -229,6 +239,7 @@ public class Detrito : MonoBehaviour
             textoDoNumero.fontSize = 66;
             textoDoNumero.fontStyle = FontStyles.Bold;
             textoDoNumero.color = normalTextColor;
+            textoDoNumero.raycastTarget = false;
 
             RectTransform textRT = textoDoNumero.rectTransform;
             if (textRT != null)
@@ -272,13 +283,33 @@ public class Detrito : MonoBehaviour
     {
         Number = value;
         manager = defManager;
+        IsHit = false;
+        IsHovered = false;
+        spawnAnimProgress = 0f;
         initialPosition = transform.position;
         timeOffset = Random.Range(0f, 10f);
+
+        Collider col = GetComponent<Collider>();
+        if (col != null) col.enabled = true;
+
+        SetHighlight(false);
 
         if (textoDoNumero != null)
         {
             textoDoNumero.text = value.ToString();
         }
+    }
+
+    public void DeactivateToPool()
+    {
+        if (errorFlashRoutine != null)
+        {
+            StopCoroutine(errorFlashRoutine);
+            errorFlashRoutine = null;
+        }
+        IsHit = true;
+        IsHovered = false;
+        gameObject.SetActive(false);
     }
 
     private void Update()
@@ -296,6 +327,13 @@ public class Detrito : MonoBehaviour
 
     private void LateUpdate()
     {
+        if (spawnAnimProgress < 1f)
+        {
+            spawnAnimProgress = Mathf.Min(1f, spawnAnimProgress + Time.deltaTime * 4.5f);
+            float ease = 1f - Mathf.Pow(1f - spawnAnimProgress, 3f);
+            transform.localScale = Vector3.LerpUnclamped(cockpitViewScale * 0.25f, cockpitViewScale, ease);
+        }
+
         if (!showNumberLabel) return;
 
         // Garante que o número fique fixado diretamente abaixo do objeto,
@@ -304,13 +342,22 @@ public class Detrito : MonoBehaviour
         {
             labelContainer.position = transform.position - Vector3.up * numberYOffset;
 
+            float targetBadgeScale = IsHovered ? 0.0128f : 0.011f;
+            currentBadgeScale = Mathf.Lerp(currentBadgeScale, targetBadgeScale, Time.deltaTime * 14f);
+            float parentScale = Mathf.Max(0.25f, transform.localScale.x);
+            float compScale = (currentBadgeScale * cockpitViewScale.x) / parentScale;
+            labelContainer.localScale = new Vector3(compScale, compScale, compScale);
+
             // Mantém a etiqueta de número sempre voltada para os olhos do jogador na cabine VR
             if (billboardText)
             {
-                Camera mainCam = Camera.main;
-                if (mainCam != null)
+                if (cachedCamTransform == null && Camera.main != null)
                 {
-                    Vector3 lookDir = labelContainer.position - mainCam.transform.position;
+                    cachedCamTransform = Camera.main.transform;
+                }
+                if (cachedCamTransform != null)
+                {
+                    Vector3 lookDir = labelContainer.position - cachedCamTransform.position;
                     if (lookDir.sqrMagnitude > 0.001f)
                     {
                         labelContainer.rotation = Quaternion.LookRotation(lookDir);
@@ -374,6 +421,16 @@ public class Detrito : MonoBehaviour
         if (textoDoNumero != null) textoDoNumero.color = normalTextColor;
     }
 
+    private void ApplyIdleSpaceRelief()
+    {
+        if (targetMaterial == null) return;
+        if (targetMaterial.HasProperty("_EmissionColor"))
+        {
+            targetMaterial.SetColor("_EmissionColor", new Color(0.04f, 0.08f, 0.14f, 1f));
+            targetMaterial.EnableKeyword("_EMISSION");
+        }
+    }
+
     public void SetHighlight(bool highlighted)
     {
         IsHovered = highlighted;
@@ -383,9 +440,8 @@ public class Detrito : MonoBehaviour
             targetMaterial.color = highlighted ? hoverHighlightColor : originalMeshColor;
             if (targetMaterial.HasProperty("_EmissionColor"))
             {
-                targetMaterial.SetColor("_EmissionColor", highlighted ? hoverHighlightColor * 0.8f : Color.black);
-                if (highlighted) targetMaterial.EnableKeyword("_EMISSION");
-                else targetMaterial.DisableKeyword("_EMISSION");
+                targetMaterial.SetColor("_EmissionColor", highlighted ? hoverHighlightColor * 0.8f : new Color(0.04f, 0.08f, 0.14f, 1f));
+                targetMaterial.EnableKeyword("_EMISSION");
             }
         }
 
@@ -405,6 +461,15 @@ public class Detrito : MonoBehaviour
         }
     }
 
+    private void OnDestroy()
+    {
+        if (targetMaterial != null)
+        {
+            Destroy(targetMaterial);
+            targetMaterial = null;
+        }
+    }
+
     public void Explode(bool isCorrect = true)
     {
         IsHit = true;
@@ -421,7 +486,7 @@ public class Detrito : MonoBehaviour
                 GerenteSom.Instance.PlayHit();
             }
             SpawnExplosionFragments();
-            Destroy(gameObject);
+            DeactivateToPool();
         }
         else
         {
@@ -439,11 +504,7 @@ public class Detrito : MonoBehaviour
         MeshFilter mf = GetComponentInChildren<MeshFilter>();
         Mesh refMesh = (mf != null && mf.sharedMesh != null) ? mf.sharedMesh : cachedMeteorMesh;
 
-        GameObject explosionRoot = new GameObject("ExplosaoDetrito_Pedacos");
-        explosionRoot.transform.position = center;
-
-        DebrisShatterEffect shatter = explosionRoot.AddComponent<DebrisShatterEffect>();
-        shatter.Init(refMat, originalMeshColor, baseSize, refMesh);
+        DebrisShatterEffect.PlayAt(center, refMat, originalMeshColor, baseSize, refMesh);
     }
 
     private System.Collections.IEnumerator HitFeedbackAndDestroyRoutine()
@@ -459,22 +520,28 @@ public class Detrito : MonoBehaviour
             }
         }
         yield return new WaitForSeconds(0.1f);
-        Destroy(gameObject);
+        DeactivateToPool();
     }
 }
 
 /// <summary>
 /// Efeito visual de explosão em pedaços 3D quando o detrito correto é destruído.
+/// Usa Object Pooling estático para zero alocações e zero travadas durante o combate.
 /// </summary>
 public class DebrisShatterEffect : MonoBehaviour
 {
     private struct PieceData
     {
         public Transform transform;
+        public MeshFilter meshFilter;
+        public MeshRenderer meshRenderer;
         public Vector3 velocity;
         public Vector3 angularVelocity;
         public Vector3 initialScale;
     }
+
+    private const int PieceCount = 14;
+    private const float Duration = 0.95f;
 
     private PieceData[] pieces;
     private Transform shockwaveTransform;
@@ -482,103 +549,198 @@ public class DebrisShatterEffect : MonoBehaviour
     private Material glowMat;
     private Material shockwaveMat;
     private float elapsed = 0f;
-    private const float Duration = 0.95f;
+    private bool isBuilt = false;
 
-    public void Init(Material baseMat, Color fallbackColor, float baseSize, Mesh customMesh = null)
+    private static Shader cachedUnlitShader;
+    private static Shader cachedLitShader;
+    private static Mesh cachedSphereMesh;
+    private static Mesh cachedCubeMesh;
+    private static readonly System.Collections.Generic.List<DebrisShatterEffect> s_Pool = new System.Collections.Generic.List<DebrisShatterEffect>(4);
+
+    public static void PrewarmPool(Material defaultMat = null, Mesh defaultMesh = null)
     {
-        Shader unlitShader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default");
-        Shader litShader = Shader.Find("Universal Render Pipeline/Lit") ?? unlitShader;
+        EnsureCachedPrimitiveAssets();
 
-        if (baseMat != null)
+        // Remove referências destruídas na troca de cena
+        for (int i = s_Pool.Count - 1; i >= 0; i--)
         {
-            fragmentMat = new Material(baseMat);
-        }
-        else
-        {
-            fragmentMat = new Material(litShader);
-            fragmentMat.color = fallbackColor;
+            if (s_Pool[i] == null) s_Pool.RemoveAt(i);
         }
 
-        glowMat = new Material(unlitShader);
+        while (s_Pool.Count < 2)
+        {
+            GameObject root = new GameObject("ExplosaoDetrito_Pooled");
+            DebrisShatterEffect fx = root.AddComponent<DebrisShatterEffect>();
+            fx.BuildReusableHierarchy(defaultMat, Color.gray, defaultMesh);
+            root.SetActive(false);
+            s_Pool.Add(fx);
+        }
+    }
+
+    public static void PlayAt(Vector3 worldPos, Material baseMat, Color fallbackColor, float baseSize, Mesh customMesh = null)
+    {
+        EnsureCachedPrimitiveAssets();
+
+        DebrisShatterEffect chosen = null;
+        for (int i = s_Pool.Count - 1; i >= 0; i--)
+        {
+            if (s_Pool[i] == null)
+            {
+                s_Pool.RemoveAt(i);
+                continue;
+            }
+            if (!s_Pool[i].gameObject.activeSelf)
+            {
+                chosen = s_Pool[i];
+                break;
+            }
+        }
+
+        if (chosen == null)
+        {
+            GameObject root = new GameObject("ExplosaoDetrito_Pooled");
+            chosen = root.AddComponent<DebrisShatterEffect>();
+            chosen.BuildReusableHierarchy(baseMat, fallbackColor, customMesh);
+            s_Pool.Add(chosen);
+        }
+
+        chosen.transform.position = worldPos;
+        chosen.TriggerReusableExplosion(baseMat, fallbackColor, baseSize, customMesh);
+    }
+
+    private static void EnsureCachedPrimitiveAssets()
+    {
+        if (cachedUnlitShader == null)
+        {
+            cachedUnlitShader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default");
+        }
+        if (cachedLitShader == null)
+        {
+            cachedLitShader = Shader.Find("Universal Render Pipeline/Lit") ?? cachedUnlitShader;
+        }
+        if (cachedSphereMesh == null)
+        {
+            GameObject tmpSphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            MeshFilter mf = tmpSphere.GetComponent<MeshFilter>();
+            if (mf != null) cachedSphereMesh = mf.sharedMesh;
+            Destroy(tmpSphere);
+        }
+        if (cachedCubeMesh == null)
+        {
+            GameObject tmpCube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            MeshFilter mf = tmpCube.GetComponent<MeshFilter>();
+            if (mf != null) cachedCubeMesh = mf.sharedMesh;
+            Destroy(tmpCube);
+        }
+    }
+
+    private void BuildReusableHierarchy(Material baseMat, Color fallbackColor, Mesh customMesh)
+    {
+        if (isBuilt) return;
+        isBuilt = true;
+
+        EnsureCachedPrimitiveAssets();
+
+        fragmentMat = baseMat != null ? new Material(baseMat) : new Material(cachedLitShader) { color = fallbackColor };
+
+        glowMat = new Material(cachedUnlitShader);
         Color glowCol = new Color(1f, 0.55f, 0.15f, 1f);
         glowMat.color = glowCol;
         if (glowMat.HasProperty("_BaseColor")) glowMat.SetColor("_BaseColor", glowCol);
         if (glowMat.HasProperty("_Color")) glowMat.SetColor("_Color", glowCol);
 
-        // 1. Onda de impacto / clarão central rápido
-        GameObject flashObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        flashObj.name = "ClarãoExplosao";
-        flashObj.transform.SetParent(transform, false);
-        flashObj.transform.localPosition = Vector3.zero;
-        flashObj.transform.localScale = Vector3.one * (baseSize * 1.4f);
-        Collider flashCol = flashObj.GetComponent<Collider>();
-        if (flashCol != null) Destroy(flashCol);
-
-        shockwaveMat = new Material(unlitShader);
+        shockwaveMat = new Material(cachedUnlitShader);
         Color flashColor = new Color(1f, 0.85f, 0.4f, 0.85f);
         shockwaveMat.color = flashColor;
         if (shockwaveMat.HasProperty("_BaseColor")) shockwaveMat.SetColor("_BaseColor", flashColor);
         if (shockwaveMat.HasProperty("_Color")) shockwaveMat.SetColor("_Color", flashColor);
-        flashObj.GetComponent<Renderer>().sharedMaterial = shockwaveMat;
+
+        GameObject flashObj = new GameObject("ClarãoExplosao");
+        flashObj.transform.SetParent(transform, false);
+        MeshFilter flashMf = flashObj.AddComponent<MeshFilter>();
+        flashMf.sharedMesh = cachedSphereMesh;
+        MeshRenderer flashMr = flashObj.AddComponent<MeshRenderer>();
+        flashMr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        flashMr.receiveShadows = false;
+        flashMr.sharedMaterial = shockwaveMat;
         shockwaveTransform = flashObj.transform;
 
-        // 2. Gera 18 pedaços irregulares voando em todas as direções
-        int pieceCount = 18;
-        pieces = new PieceData[pieceCount];
-
-        for (int i = 0; i < pieceCount; i++)
+        pieces = new PieceData[PieceCount];
+        for (int i = 0; i < PieceCount; i++)
         {
-            PrimitiveType type = (i % 3 == 0) ? PrimitiveType.Cube : ((i % 3 == 1) ? PrimitiveType.Sphere : PrimitiveType.Cylinder);
-            GameObject piece = GameObject.CreatePrimitive(type);
-            piece.name = $"Pedaco_{i}";
+            GameObject piece = new GameObject($"Pedaco_{i}");
             piece.transform.SetParent(transform, false);
 
-            Collider c = piece.GetComponent<Collider>();
-            if (c != null) Destroy(c);
+            MeshFilter pieceMf = piece.AddComponent<MeshFilter>();
+            pieceMf.sharedMesh = (i % 3 == 0 && customMesh != null)
+                ? customMesh
+                : ((i % 2 == 0) ? cachedCubeMesh : cachedSphereMesh);
 
-            if (customMesh != null)
+            MeshRenderer r = piece.AddComponent<MeshRenderer>();
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
+            r.sharedMaterial = (i % 4 == 0) ? glowMat : fragmentMat;
+
+            pieces[i] = new PieceData
             {
-                MeshFilter pieceMf = piece.GetComponent<MeshFilter>();
-                if (pieceMf != null) pieceMf.sharedMesh = customMesh;
+                transform = piece.transform,
+                meshFilter = pieceMf,
+                meshRenderer = r
+            };
+        }
+    }
+
+    public void TriggerReusableExplosion(Material baseMat, Color fallbackColor, float baseSize, Mesh customMesh)
+    {
+        BuildReusableHierarchy(baseMat, fallbackColor, customMesh);
+        elapsed = 0f;
+
+        if (shockwaveTransform != null)
+        {
+            shockwaveTransform.localPosition = Vector3.zero;
+            shockwaveTransform.localScale = Vector3.one * (baseSize * 1.4f);
+            shockwaveTransform.gameObject.SetActive(true);
+        }
+
+        for (int i = 0; i < PieceCount; i++)
+        {
+            PieceData p = pieces[i];
+            if (p.meshFilter != null && i % 3 == 0 && customMesh != null)
+            {
+                p.meshFilter.sharedMesh = customMesh;
             }
 
-            // Posição inicial levemente espalhada no volume do detrito
             Vector3 dir = Random.onUnitSphere;
             if (dir.sqrMagnitude < 0.001f) dir = Vector3.up;
             dir.Normalize();
 
-            piece.transform.localPosition = dir * Random.Range(0.05f, baseSize * 0.6f);
-            piece.transform.localRotation = Random.rotation;
+            p.transform.localPosition = dir * Random.Range(0.05f, baseSize * 0.6f);
+            p.transform.localRotation = Random.rotation;
 
-            // Escala irregular para parecerem fragmentos de rocha/sucata espacial
             Vector3 scale = new Vector3(
                 baseSize * Random.Range(0.45f, 1.35f),
                 baseSize * Random.Range(0.35f, 1.15f),
                 baseSize * Random.Range(0.45f, 1.35f)
             );
-            piece.transform.localScale = scale;
-
-            Renderer r = piece.GetComponent<Renderer>();
-            if (r != null)
-            {
-                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                r.receiveShadows = false;
-                r.sharedMaterial = (i % 4 == 0) ? glowMat : fragmentMat;
-            }
+            p.transform.localScale = scale;
 
             float speed = Random.Range(3.8f, 9.5f);
-            pieces[i] = new PieceData
-            {
-                transform = piece.transform,
-                velocity = dir * speed,
-                angularVelocity = new Vector3(
-                    Random.Range(-520f, 520f),
-                    Random.Range(-520f, 520f),
-                    Random.Range(-520f, 520f)
-                ),
-                initialScale = scale
-            };
+            p.velocity = dir * speed;
+            p.angularVelocity = new Vector3(
+                Random.Range(-520f, 520f),
+                Random.Range(-520f, 520f),
+                Random.Range(-520f, 520f)
+            );
+            p.initialScale = scale;
+            pieces[i] = p;
         }
+
+        gameObject.SetActive(true);
+    }
+
+    public void Init(Material baseMat, Color fallbackColor, float baseSize, Mesh customMesh = null)
+    {
+        TriggerReusableExplosion(baseMat, fallbackColor, baseSize, customMesh);
     }
 
     private void Update()
@@ -620,7 +782,7 @@ public class DebrisShatterEffect : MonoBehaviour
 
         if (elapsed >= Duration)
         {
-            Destroy(gameObject);
+            gameObject.SetActive(false);
         }
     }
 

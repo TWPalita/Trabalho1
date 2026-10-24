@@ -6,7 +6,7 @@ using UnityEngine.SceneManagement;
 /// <summary>
 /// Gerencia as rodadas do Sistema de Defesa Espacial em Realidade Virtual:
 /// geração de alvos numerados no espaço, validação de tiro por raio VR,
-/// pontuação, integridade e interface em World Space.
+/// pontuação, integridade, feedback tático imediato e interface em World Space.
 /// </summary>
 public class GerenteDefesa : MonoBehaviour
 {
@@ -24,18 +24,22 @@ public class GerenteDefesa : MonoBehaviour
     [SerializeField] private bool enableMath = true;
 
     [Header("Configurações das Rodadas")]
-    [SerializeField] private float delayBetweenRounds = 1.5f;
-    [SerializeField] private int roundsToWin = 5;
+    [SerializeField] private float delayBetweenRounds = 1.2f;
+    [SerializeField] private int roundsToWin = 10;
     [SerializeField] private Transform shipExplorationSpawn;
     [SerializeField] private string shipSceneName = "SampleScene";
     [SerializeField] private bool autoStartOnAwake = false;
 
     private List<Detrito> activeDebris = new List<Detrito>();
+    private readonly List<Detrito> debrisPool = new List<Detrito>();
     private MathProblem currentProblem;
     private int currentRound = 1;
     private bool isRoundTransitioning = false;
     private bool roundResolved = false;
     private bool isDefenseActive = false;
+
+    public bool IsDefenseActive => isDefenseActive;
+    public int CurrentRound => currentRound;
 
     private void Awake()
     {
@@ -51,6 +55,11 @@ public class GerenteDefesa : MonoBehaviour
         if (mathManager == null) mathManager = FindAnyObjectByType<GeradorMatematica>();
         if (scoreManager == null) scoreManager = FindAnyObjectByType<GerentePontuacao>();
         if (weaponController == null) weaponController = FindAnyObjectByType<ArmaVR>();
+
+        if (roundsToWin == 5)
+        {
+            roundsToWin = 10;
+        }
     }
 
     private void Start()
@@ -60,7 +69,11 @@ public class GerenteDefesa : MonoBehaviour
             scoreManager.OnGameOver += HandleGameOver;
         }
 
-        // Garante que a sequência narrativa de introdução (Canvas 1 -> Canvas 2 -> Combate) seja exibida ao chegar na cena
+        // Pré-aquece o pool de explosões e o pool de meteoros no carregamento da cena (zero travadas durante o jogo)
+        DebrisShatterEffect.PrewarmPool();
+        EnsureDebrisPoolPrewarmed();
+
+        // Garante que a sequência narrativa de introdução seja exibida ao chegar na cena
         IntroducaoDefesaVR intro = FindAnyObjectByType<IntroducaoDefesaVR>();
         if (intro == null)
         {
@@ -69,16 +82,65 @@ public class GerenteDefesa : MonoBehaviour
         }
     }
 
-    private void Update()
+    private void EnsureDebrisPoolPrewarmed()
     {
-        if (UnityEngine.InputSystem.Keyboard.current != null)
+        if (debrisPrefab == null || spawnPoints == null) return;
+
+        int targetPoolSize = Mathf.Max(4, spawnPoints.Length);
+        while (debrisPool.Count < targetPoolSize)
         {
-            if (UnityEngine.InputSystem.Keyboard.current.rKey.wasPressedThisFrame ||
-                UnityEngine.InputSystem.Keyboard.current.escapeKey.wasPressedThisFrame)
+            int idx = debrisPool.Count;
+            Vector3 pos = (idx < spawnPoints.Length && spawnPoints[idx] != null)
+                ? GetElevatedSpawnPosition(idx)
+                : Vector3.zero;
+            Quaternion rot = (idx < spawnPoints.Length && spawnPoints[idx] != null)
+                ? spawnPoints[idx].rotation
+                : Quaternion.identity;
+
+            GameObject obj = Instantiate(debrisPrefab, pos, rot);
+            obj.name = $"Detrito_Pooled_{idx + 1}";
+            Detrito deb = obj.GetComponent<Detrito>();
+            if (deb == null) deb = obj.AddComponent<Detrito>();
+            if (obj.GetComponent<DebrisMovement>() == null) obj.AddComponent<DebrisMovement>();
+
+            deb.DeactivateToPool();
+            debrisPool.Add(deb);
+        }
+    }
+
+    private Detrito GetOrCreatePooledDebris(int slotIndex, Vector3 spawnPos, Quaternion spawnRot)
+    {
+        EnsureDebrisPoolPrewarmed();
+
+        if (slotIndex >= 0 && slotIndex < debrisPool.Count && debrisPool[slotIndex] != null && !debrisPool[slotIndex].gameObject.activeSelf)
+        {
+            Detrito slotDeb = debrisPool[slotIndex];
+            slotDeb.transform.SetPositionAndRotation(spawnPos, spawnRot);
+            slotDeb.gameObject.SetActive(true);
+            return slotDeb;
+        }
+
+        for (int i = 0; i < debrisPool.Count; i++)
+        {
+            if (debrisPool[i] != null && !debrisPool[i].gameObject.activeSelf)
             {
-                ReturnToShip();
+                Detrito freeDeb = debrisPool[i];
+                freeDeb.transform.SetPositionAndRotation(spawnPos, spawnRot);
+                freeDeb.gameObject.SetActive(true);
+                return freeDeb;
             }
         }
+
+        GameObject obj = Instantiate(debrisPrefab, spawnPos, spawnRot);
+        obj.name = $"Detrito_Pooled_{debrisPool.Count + 1}";
+        Detrito newDeb = obj.GetComponent<Detrito>();
+        if (newDeb == null) newDeb = obj.AddComponent<Detrito>();
+        debrisPool.Add(newDeb);
+        return newDeb;
+    }
+
+    private void Update()
+    {
     }
 
     private void OnDestroy()
@@ -93,6 +155,11 @@ public class GerenteDefesa : MonoBehaviour
     {
         isDefenseActive = true;
         currentRound = 1;
+
+        if (mathManager != null)
+        {
+            mathManager.ResetHistory();
+        }
 
         if (scoreManager != null)
         {
@@ -126,7 +193,7 @@ public class GerenteDefesa : MonoBehaviour
             if (InterfaceVR.Instance != null)
             {
                 InterfaceVR.Instance.UpdateMathQuestion(currentProblem.QuestionText);
-                InterfaceVR.Instance.UpdateRound(currentRound);
+                InterfaceVR.Instance.UpdateRound(currentRound, roundsToWin);
             }
 
             // 3. Spawna os objetos espaciais com as opções de resposta no campo de visão
@@ -135,7 +202,6 @@ public class GerenteDefesa : MonoBehaviour
         else
         {
             // === MODO BASE DE DEFESA (SEM MATEMÁTICA) ===
-            // 5 detritos no espaço em movimento em direção à nave
             if (InterfaceVR.Instance != null)
             {
                 InterfaceVR.Instance.UpdateMathQuestion("DEFESA DO COCKPIT\nATINJA OS DETRITOS");
@@ -173,7 +239,6 @@ public class GerenteDefesa : MonoBehaviour
             return Vector3.zero;
 
         Vector3 pos = spawnPoints[spawnIndex].position;
-        // Sobe os detritos para ficarem mais altos no campo de visão do para-brisa
         if (pos.y < 6.0f)
         {
             pos.y += 1.8f;
@@ -186,21 +251,17 @@ public class GerenteDefesa : MonoBehaviour
         if (spawnIndex < 0 || spawnIndex >= spawnPoints.Length || spawnPoints[spawnIndex] == null) return;
 
         Vector3 spawnPos = GetElevatedSpawnPosition(spawnIndex);
-        GameObject obj = Instantiate(debrisPrefab, spawnPos, spawnPoints[spawnIndex].rotation);
-        obj.name = $"Detrito_{spawnIndex + 1}";
-
-        Detrito deb = obj.GetComponent<Detrito>();
+        Detrito deb = GetOrCreatePooledDebris(spawnIndex, spawnPos, spawnPoints[spawnIndex].rotation);
         if (deb != null)
         {
             deb.Init(0, this);
             deb.SetShowNumberLabel(false);
             activeDebris.Add(deb);
-        }
 
-        // Garante que o DebrisMovement esteja presente e inicializado no ponto de spawn
-        DebrisMovement mov = obj.GetComponent<DebrisMovement>();
-        if (mov == null) mov = obj.AddComponent<DebrisMovement>();
-        mov.SetSpawnPoint(spawnPos, spawnIndex);
+            DebrisMovement mov = deb.GetComponent<DebrisMovement>();
+            if (mov == null) mov = deb.gameObject.AddComponent<DebrisMovement>();
+            mov.SetSpawnPoint(spawnPos, spawnIndex);
+        }
     }
 
     private void SpawnDebris(int[] options)
@@ -215,19 +276,17 @@ public class GerenteDefesa : MonoBehaviour
         for (int i = 0; i < count; i++)
         {
             Vector3 spawnPos = GetElevatedSpawnPosition(i);
-            GameObject obj = Instantiate(debrisPrefab, spawnPos, spawnPoints[i].rotation);
-
-            Detrito deb = obj.GetComponent<Detrito>();
+            Detrito deb = GetOrCreatePooledDebris(i, spawnPos, spawnPoints[i].rotation);
             if (deb != null)
             {
                 deb.Init(options[i], this);
                 deb.SetShowNumberLabel(true);
                 activeDebris.Add(deb);
-            }
 
-            DebrisMovement mov = obj.GetComponent<DebrisMovement>();
-            if (mov == null) mov = obj.AddComponent<DebrisMovement>();
-            mov.SetSpawnPoint(spawnPos, i);
+                DebrisMovement mov = deb.GetComponent<DebrisMovement>();
+                if (mov == null) mov = deb.gameObject.AddComponent<DebrisMovement>();
+                mov.SetSpawnPoint(spawnPos, i);
+            }
         }
     }
 
@@ -237,26 +296,21 @@ public class GerenteDefesa : MonoBehaviour
 
         if (!enableMath)
         {
-            // === MODO BASE: IMPACTO E DESTRUIÇÃO/FEEDBACK IMEDIATO ===
             hitDebris.MarkHit();
 
-            // 1. Áudio de impacto
             if (GerenteSom.Instance != null)
             {
                 GerenteSom.Instance.PlayHit();
             }
 
-            // 2. Vibração tátil no controlador VR
             ArmaVR.TriggerAllHaptics(0.8f, 0.18f);
 
-            // 3. Identifica ponto de spawn original mais próximo para respawn
             int spIndex = FindClosestSpawnIndex(hitDebris.transform.position);
 
             activeDebris.Remove(hitDebris);
             hitDebris.Explode(true);
 
-            // 4. Respawn automático após intervalo para manter continuamente alvos no espaço
-            StartCoroutine(RespawnSingleDebrisRoutine(spIndex, 1.8f));
+            StartCoroutine(RespawnSingleDebrisRoutine(spIndex, 1.4f));
             return;
         }
 
@@ -277,29 +331,40 @@ public class GerenteDefesa : MonoBehaviour
 
             if (scoreManager != null) scoreManager.AddCorrectHit();
             if (GerenteSom.Instance != null) GerenteSom.Instance.PlayCorrect();
+            if (InterfaceVR.Instance != null)
+            {
+                InterfaceVR.Instance.ShowFeedback(true, "ALVO NEUTRALIZADO!\n+100 PONTOS");
+            }
 
             activeDebris.Remove(hitDebris);
             hitDebris.Explode(true);
+
+            // Após acertar a primeira conta (Rodada 1), faz a tela de objetivo sumir como um holograma se desligando
+            if (currentRound == 1 && IntroducaoDefesaVR.Instance != null)
+            {
+                IntroducaoDefesaVR.Instance.DismissObjectiveHologramAfterFirstQuestion();
+            }
 
             StartCoroutine(NextRoundRoutine());
         }
         else
         {
             // === RESPOSTA INCORRETA ===
-            // Subtrai energia/vida e pontos. NÃO explode o detrito, NÃO avança a rodada.
             ArmaVR.TriggerAllHaptics(0.6f, 0.25f);
 
             if (scoreManager != null) scoreManager.AddWrongHit();
 
-            // Se a perda de vida causou Game Over, o painel de fim de jogo já foi acionado e os detritos limpos
             if (scoreManager != null && scoreManager.IsGameOver)
             {
                 return;
             }
 
             if (GerenteSom.Instance != null) GerenteSom.Instance.PlayError();
+            if (InterfaceVR.Instance != null)
+            {
+                InterfaceVR.Instance.ShowFeedback(false, "[!] ALVO INCORRETO!\nESCUDOS -20%");
+            }
 
-            // Feedback visual no próprio detrito (flash vermelho temporário)
             if (hitDebris != null) hitDebris.FlashError();
         }
     }
@@ -333,18 +398,29 @@ public class GerenteDefesa : MonoBehaviour
 
     private IEnumerator NextRoundRoutine()
     {
-        yield return new WaitForSeconds(0.4f);
+        yield return new WaitForSeconds(0.28f);
         ClearAllDebris();
-
-        yield return new WaitForSeconds(Mathf.Max(1.8f, delayBetweenRounds - 0.4f));
 
         if (!isDefenseActive) yield break;
 
         if (roundsToWin > 0 && currentRound >= roundsToWin)
         {
+            if (InterfaceVR.Instance != null)
+            {
+                InterfaceVR.Instance.SetHUDRootElementsVisible(false);
+            }
+            HologramVisorEffect.SetSpaceTravelActive(true);
+            yield return new WaitForSeconds(0.65f);
             HandleVictory();
             yield break;
         }
+
+        float roundWait = (currentRound == 1)
+            ? 0.92f
+            : Mathf.Clamp(delayBetweenRounds * 0.45f, 0.55f, 0.85f);
+        yield return new WaitForSeconds(roundWait);
+
+        if (!isDefenseActive) yield break;
 
         currentRound++;
         StartNewRound();
@@ -352,9 +428,13 @@ public class GerenteDefesa : MonoBehaviour
 
     private void ClearAllDebris()
     {
-        foreach (var deb in activeDebris)
+        for (int i = 0; i < activeDebris.Count; i++)
         {
-            if (deb != null) Destroy(deb.gameObject);
+            Detrito deb = activeDebris[i];
+            if (deb != null)
+            {
+                deb.DeactivateToPool();
+            }
         }
         activeDebris.Clear();
     }
@@ -411,6 +491,10 @@ public class GerenteDefesa : MonoBehaviour
     public void RestartDefense()
     {
         StartDefense();
+        if (IntroducaoDefesaVR.Instance != null)
+        {
+            IntroducaoDefesaVR.Instance.OnDefenseRestarted();
+        }
     }
 
     public void ReturnToShip()
@@ -427,10 +511,16 @@ public class GerenteDefesa : MonoBehaviour
         }
 
         string targetScene = !string.IsNullOrEmpty(shipSceneName) ? shipSceneName : "SampleScene";
-        Debug.Log($"[GerenteDefesa] Retornando imediatamente para a cena: '{targetScene}'");
-        SceneManager.LoadScene(targetScene);
+        Debug.Log($"[GerenteDefesa] Retornando para a cena: '{targetScene}'");
+        if (TransicaoTela.Instance != null)
+        {
+            TransicaoTela.Instance.FadeOut(0.30f, () => SceneManager.LoadScene(targetScene));
+        }
+        else
+        {
+            SceneManager.LoadScene(targetScene);
+        }
     }
 }
 
 public class DefenseManager : GerenteDefesa { }
-

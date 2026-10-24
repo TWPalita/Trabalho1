@@ -1191,6 +1191,9 @@ public class ArmaVR : MonoBehaviour
 
     private void TriggerHaptics(float amplitude, float duration)
     {
+        if (!UnityEngine.XR.XRSettings.isDeviceActive)
+            return;
+
         if (currentHoldingInteractor is XRBaseInputInteractor grabInputInteractor)
         {
             grabInputInteractor.SendHapticImpulse(amplitude, duration);

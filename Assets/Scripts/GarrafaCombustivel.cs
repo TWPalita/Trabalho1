@@ -4,12 +4,23 @@ using UnityEngine.XR.Interaction.Toolkit.Interactables;
 
 public class GarrafaCombustivel : MonoBehaviour
 {
+    [Header("Configuração de Abastecimento")]
+    [Tooltip("Distância em metros para abastecer automaticamente ao aproximar o galão do gerador")]
+    [SerializeField] private float distanciaAbastecimentoProximidade = 0.90f;
+
     private XRGrabInteractable grabInteractable;
+    private GeradorCombustivel geradorCached;
     private bool jaMostrouAvisoColeta = false;
+    private bool jaAbasteceu = false;
 
     private void Awake()
     {
         grabInteractable = GetComponent<XRGrabInteractable>();
+    }
+
+    private void Start()
+    {
+        geradorCached = FindFirstObjectByType<GeradorCombustivel>();
     }
 
     private void OnEnable()
@@ -28,6 +39,24 @@ public class GarrafaCombustivel : MonoBehaviour
         if (grabInteractable != null)
         {
             grabInteractable.selectEntered.RemoveListener(AoPegarGalao);
+        }
+    }
+
+    private void Update()
+    {
+        if (jaAbasteceu || !jaMostrouAvisoColeta)
+            return;
+
+        if (geradorCached == null)
+        {
+            geradorCached = FindFirstObjectByType<GeradorCombustivel>();
+            if (geradorCached == null) return;
+        }
+
+        float distancia = Vector3.Distance(transform.position, geradorCached.transform.position);
+        if (distancia <= distanciaAbastecimentoProximidade)
+        {
+            AbastecerGerador(geradorCached);
         }
     }
 
@@ -51,15 +80,36 @@ public class GarrafaCombustivel : MonoBehaviour
 
     private void OnCollisionEnter(Collision collision)
     {
-        // Procura o gerador no objeto atingido
-        // ou em algum dos seus objetos pais.
+        if (jaAbasteceu) return;
+
         GeradorCombustivel gerador =
             collision.collider.GetComponentInParent<GeradorCombustivel>();
 
         if (gerador != null)
         {
-            gerador.ReceberCombustivel();
-            Destroy(gameObject);
+            AbastecerGerador(gerador);
         }
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (jaAbasteceu) return;
+
+        GeradorCombustivel gerador =
+            other.GetComponentInParent<GeradorCombustivel>();
+
+        if (gerador != null)
+        {
+            AbastecerGerador(gerador);
+        }
+    }
+
+    private void AbastecerGerador(GeradorCombustivel gerador)
+    {
+        if (jaAbasteceu || gerador == null) return;
+        jaAbasteceu = true;
+
+        gerador.ReceberCombustivel();
+        Destroy(gameObject);
     }
 }

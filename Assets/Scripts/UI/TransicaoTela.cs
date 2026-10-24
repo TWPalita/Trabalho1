@@ -7,6 +7,7 @@ using UnityEngine.SceneManagement;
 /// <summary>
 /// Controla o escurecimento e clareamento da tela (Fade In / Fade Out)
 /// para transições suaves entre áreas e cenas em Realidade Virtual (VR).
+/// Desativa o Canvas quando totalmente transparente para eliminar overdraw e manter alta fluidez.
 /// </summary>
 public class TransicaoTela : MonoBehaviour
 {
@@ -31,10 +32,11 @@ public class TransicaoTela : MonoBehaviour
 
     [Header("Configurações")]
     [SerializeField] private CanvasGroup canvasGroup;
-    [SerializeField] private float defaultFadeDuration = 0.4f;
+    [SerializeField] private float defaultFadeDuration = 0.32f;
     [SerializeField] private bool fadeInOnStart = true;
 
     private GameObject fadeOverlayObject;
+    private Canvas fadeCanvas;
     private Camera targetCamera;
     private Coroutine currentFadeRoutine;
 
@@ -48,6 +50,12 @@ public class TransicaoTela : MonoBehaviour
         {
             Destroy(this);
             return;
+        }
+
+        // Garante taxa de quadros fluida
+        if (Application.targetFrameRate < 90)
+        {
+            Application.targetFrameRate = 90;
         }
 
         EnsureCanvasComponents();
@@ -86,16 +94,20 @@ public class TransicaoTela : MonoBehaviour
 
     private void LateUpdate()
     {
-        // Garante que o Canvas do fade siga rigorosamente a visão do headset VR em tempo real
+        if (fadeOverlayObject == null || !fadeOverlayObject.activeSelf) return;
+
         if (targetCamera == null || !targetCamera.isActiveAndEnabled)
         {
             targetCamera = Camera.main;
         }
 
-        if (targetCamera != null && fadeOverlayObject != null)
+        if (targetCamera != null)
         {
-            fadeOverlayObject.transform.position = targetCamera.transform.position + targetCamera.transform.forward * 0.12f;
-            fadeOverlayObject.transform.rotation = targetCamera.transform.rotation;
+            Transform camTr = targetCamera.transform;
+            fadeOverlayObject.transform.SetPositionAndRotation(
+                camTr.position + camTr.forward * 0.12f,
+                camTr.rotation
+            );
         }
     }
 
@@ -113,11 +125,11 @@ public class TransicaoTela : MonoBehaviour
             fadeOverlayObject.transform.SetParent(null);
             DontDestroyOnLoad(fadeOverlayObject);
 
-            Canvas canvas = fadeOverlayObject.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.WorldSpace;
-            canvas.sortingOrder = 9999;
+            fadeCanvas = fadeOverlayObject.AddComponent<Canvas>();
+            fadeCanvas.renderMode = RenderMode.WorldSpace;
+            fadeCanvas.sortingOrder = 9999;
 
-            RectTransform rt = canvas.GetComponent<RectTransform>();
+            RectTransform rt = fadeCanvas.GetComponent<RectTransform>();
             if (rt != null)
             {
                 rt.sizeDelta = new Vector2(2.5f, 2.5f);
@@ -125,11 +137,14 @@ public class TransicaoTela : MonoBehaviour
             }
 
             canvasGroup = fadeOverlayObject.AddComponent<CanvasGroup>();
+            canvasGroup.interactable = false;
+            canvasGroup.blocksRaycasts = false;
 
             GameObject imgObj = new GameObject("FadeBlackOverlay");
             imgObj.transform.SetParent(fadeOverlayObject.transform, false);
             Image img = imgObj.AddComponent<Image>();
-            img.color = Color.black;
+            img.color = new Color(0.01f, 0.02f, 0.05f, 1f);
+            img.raycastTarget = false;
 
             RectTransform imgRt = img.GetComponent<RectTransform>();
             imgRt.anchorMin = Vector2.zero;
@@ -140,14 +155,16 @@ public class TransicaoTela : MonoBehaviour
 
     public void FadeIn(float duration = -1f, Action onComplete = null)
     {
-        float d = duration > 0 ? duration : defaultFadeDuration;
+        EnsureCanvasComponents();
+        float d = duration > 0f ? duration : defaultFadeDuration;
         if (currentFadeRoutine != null) StopCoroutine(currentFadeRoutine);
         currentFadeRoutine = StartCoroutine(FadeRoutine(canvasGroup != null ? canvasGroup.alpha : 1f, 0f, d, onComplete));
     }
 
     public void FadeOut(float duration = -1f, Action onComplete = null)
     {
-        float d = duration > 0 ? duration : defaultFadeDuration;
+        EnsureCanvasComponents();
+        float d = duration > 0f ? duration : defaultFadeDuration;
         if (currentFadeRoutine != null) StopCoroutine(currentFadeRoutine);
         currentFadeRoutine = StartCoroutine(FadeRoutine(canvasGroup != null ? canvasGroup.alpha : 0f, 1f, d, onComplete));
     }
@@ -160,22 +177,34 @@ public class TransicaoTela : MonoBehaviour
             yield break;
         }
 
-        canvasGroup.blocksRaycasts = (to > 0.05f);
+        if (fadeOverlayObject != null && !fadeOverlayObject.activeSelf)
+        {
+            fadeOverlayObject.SetActive(true);
+        }
+
+        canvasGroup.blocksRaycasts = (to > 0.5f);
         float elapsed = 0f;
 
         while (elapsed < duration)
         {
             elapsed += Time.unscaledDeltaTime;
-            canvasGroup.alpha = Mathf.Lerp(from, to, elapsed / duration);
+            float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / duration));
+            canvasGroup.alpha = Mathf.Lerp(from, to, t);
             yield return null;
         }
 
         canvasGroup.alpha = to;
         canvasGroup.blocksRaycasts = (to > 0.95f);
+
+        // Desativa o GameObject quando totalmente transparente para zerar overdraw na câmera VR
+        if (to <= 0.001f && fadeOverlayObject != null)
+        {
+            fadeOverlayObject.SetActive(false);
+        }
+
         currentFadeRoutine = null;
         onComplete?.Invoke();
     }
 }
 
 public class SceneFader : TransicaoTela { }
-
