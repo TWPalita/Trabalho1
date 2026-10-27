@@ -333,7 +333,6 @@ public class IntroducaoDefesaVR : MonoBehaviour
     {
         if (cornerHudCanvasObj != null && cornerHudCanvasObj.activeSelf)
         {
-            UpdateCornerHudPlacement();
             Shader.SetGlobalMatrix(PropWorldToLocal, cornerHudCanvasObj.transform.worldToLocalMatrix);
         }
     }

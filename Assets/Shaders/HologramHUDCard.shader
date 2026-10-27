@@ -83,7 +83,6 @@ Shader "Custom/HologramHUDCard"
             float _Dissolve;
             float _CardMode;
 
-            float4x4 _HoloHudWorldToLocal;
             float _HoloHudDissolve;
             float4 _HoloHudAccentColor;
             float4 _HoloHudSecondaryColor;
@@ -100,9 +99,7 @@ Shader "Custom/HologramHUDCard"
                 OUT.texcoord = v.texcoord;
                 OUT.color = v.color * _Color;
 
-                float3 worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
-                float2 hudLocal = mul(_HoloHudWorldToLocal, float4(worldPos, 1.0)).xy;
-                OUT.hudUV = (hudLocal + float2(320.0, 115.0)) / float2(640.0, 230.0);
+                OUT.hudUV = v.texcoord;
 
                 return OUT;
             }
