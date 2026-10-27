@@ -10,6 +10,7 @@ Shader "Custom/HologramHUDCard"
         _BgRightColor ("Background Right Color", Color) = (0.03, 0.12, 0.24, 0.62)
         _Dissolve ("Dissolve Progress", Range(0, 1)) = 0.0
         _CardMode ("Card Element Mode (0=MainFrame, 1=FlatGradientElement, 2=GlowSweep)", Float) = 0
+        _ZTest ("Depth Test", Float) = 4
 
         _StencilComp ("Stencil Comparison", Float) = 8
         _Stencil ("Stencil ID", Float) = 0
@@ -42,7 +43,7 @@ Shader "Custom/HologramHUDCard"
         Cull Off
         Lighting Off
         ZWrite Off
-        ZTest [unity_GUIZTestMode]
+        ZTest [_ZTest]
         Blend SrcAlpha OneMinusSrcAlpha
         ColorMask [_ColorMask]
 

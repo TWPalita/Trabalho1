@@ -331,10 +331,6 @@ public class GerenteDefesa : MonoBehaviour
 
             if (scoreManager != null) scoreManager.AddCorrectHit();
             if (GerenteSom.Instance != null) GerenteSom.Instance.PlayCorrect();
-            if (InterfaceVR.Instance != null)
-            {
-                InterfaceVR.Instance.ShowFeedback(true, "ALVO NEUTRALIZADO!\n+100 PONTOS");
-            }
 
             activeDebris.Remove(hitDebris);
             hitDebris.Explode(true);
@@ -360,10 +356,6 @@ public class GerenteDefesa : MonoBehaviour
             }
 
             if (GerenteSom.Instance != null) GerenteSom.Instance.PlayError();
-            if (InterfaceVR.Instance != null)
-            {
-                InterfaceVR.Instance.ShowFeedback(false, "[!] ALVO INCORRETO!\nESCUDOS -20%");
-            }
 
             if (hitDebris != null) hitDebris.FlashError();
         }

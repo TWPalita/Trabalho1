@@ -159,11 +159,13 @@ public class InterfaceVR : MonoBehaviour
         Transform controlBorderTr = transform.Find("ControlPanel_Border");
         if (controlBorderTr != null)
         {
+            controlBorderTr.SetAsFirstSibling();
+
             RectTransform controlBorderRt = controlBorderTr.GetComponent<RectTransform>();
             if (controlBorderRt != null)
             {
-                controlBorderRt.anchoredPosition = new Vector2(0f, -185f);
-                controlBorderRt.sizeDelta = new Vector2(860f, 175f);
+                controlBorderRt.anchoredPosition = new Vector2(0f, -15f);
+                controlBorderRt.sizeDelta = new Vector2(1120f, 130f);
             }
 
             Image ctrlBorderImg = controlBorderTr.GetComponent<Image>();
@@ -179,7 +181,7 @@ public class InterfaceVR : MonoBehaviour
                 RectTransform innerRt = controlInnerTr.GetComponent<RectTransform>();
                 if (innerRt != null)
                 {
-                    innerRt.sizeDelta = new Vector2(860f, 175f);
+                    innerRt.sizeDelta = new Vector2(1120f, 130f);
                 }
 
                 Image ctrlInnerImg = controlInnerTr.GetComponent<Image>();
@@ -207,8 +209,8 @@ public class InterfaceVR : MonoBehaviour
             RectTransform scoreValRt = scoreText.GetComponent<RectTransform>();
             if (scoreValRt != null)
             {
-                scoreValRt.anchoredPosition = new Vector2(-265f, 6f);
-                scoreValRt.sizeDelta = new Vector2(280f, 44f);
+                scoreValRt.anchoredPosition = new Vector2(-410f, 6f);
+                scoreValRt.sizeDelta = new Vector2(300f, 44f);
             }
             scoreText.fontSize = 27f;
             scoreText.fontStyle = FontStyles.Bold;
@@ -222,8 +224,8 @@ public class InterfaceVR : MonoBehaviour
             RectTransform energySegRt = energySegmentedText.GetComponent<RectTransform>();
             if (energySegRt != null)
             {
-                energySegRt.anchoredPosition = new Vector2(265f, 18f);
-                energySegRt.sizeDelta = new Vector2(280f, 34f);
+                energySegRt.anchoredPosition = new Vector2(410f, 18f);
+                energySegRt.sizeDelta = new Vector2(300f, 34f);
             }
             energySegmentedText.fontSize = 21f;
             energySegmentedText.alignment = TextAlignmentOptions.Center;
@@ -236,8 +238,8 @@ public class InterfaceVR : MonoBehaviour
             RectTransform energyPctRt = energyText.GetComponent<RectTransform>();
             if (energyPctRt != null)
             {
-                energyPctRt.anchoredPosition = new Vector2(265f, -16f);
-                energyPctRt.sizeDelta = new Vector2(280f, 30f);
+                energyPctRt.anchoredPosition = new Vector2(410f, -16f);
+                energyPctRt.sizeDelta = new Vector2(300f, 30f);
             }
             energyText.fontSize = 18f;
             energyText.fontStyle = FontStyles.Bold;

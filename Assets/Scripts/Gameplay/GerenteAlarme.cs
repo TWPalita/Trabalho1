@@ -145,12 +145,23 @@ public class GerenteAlarme : MonoBehaviour
     private CanvasGroup cornerHudCanvasGroup;
     private RectTransform cornerHudPanelRt;
     private Image cornerHudBgImage;
-    private Image cornerHudBorderImage;
-    private Image cornerHudAccentBar;
+    private Image cornerHudDividerImage;
     private readonly Image[] cornerHudStepSegments = new Image[4];
     private TMP_Text cornerHudHeaderText;
     private TMP_Text cornerHudObjectiveText;
     private TMP_Text cornerHudContextText;
+    private Material cornerHudMainCardMaterial;
+    private Material cornerHudElementMaterial;
+    private Material cornerHudDividerMaterial;
+    private Material cornerHudTextMaterial;
+
+    private static readonly int PropCardMode = Shader.PropertyToID("_CardMode");
+    private static readonly int PropDepthTest = Shader.PropertyToID("_ZTest");
+    private static readonly int PropAccentColor = Shader.PropertyToID("_HoloHudAccentColor");
+    private static readonly int PropSecondaryColor = Shader.PropertyToID("_HoloHudSecondaryColor");
+    private static readonly int PropBgLeftColor = Shader.PropertyToID("_HoloHudBgLeftColor");
+    private static readonly int PropBgRightColor = Shader.PropertyToID("_HoloHudBgRightColor");
+    private static readonly int PropDissolve = Shader.PropertyToID("_HoloHudDissolve");
 
     private float lastPageChangeTime = -1f;
     private const float PageChangeCooldown = 0.22f;
@@ -242,6 +253,8 @@ public class GerenteAlarme : MonoBehaviour
         }
 
         TMP_FontAsset font = Resources.Load<TMP_FontAsset>("Fonts & Materials/LiberationSans SDF");
+        EnsureCornerHudMaterials();
+        EnsureCornerHudTextMaterial(font);
 
         cornerHudCanvasObj = new GameObject("CanvasHudObjetivoCanto");
         if (cam != null)
@@ -275,23 +288,12 @@ public class GerenteAlarme : MonoBehaviour
         cornerHudPanelRt.offsetMin = Vector2.zero;
         cornerHudPanelRt.offsetMax = Vector2.zero;
 
-        // Borda externa translúcida
-        GameObject borderObj = new GameObject("BordaHudCanto", typeof(RectTransform));
-        borderObj.transform.SetParent(panelObj.transform, false);
-        cornerHudBorderImage = borderObj.AddComponent<Image>();
-        cornerHudBorderImage.color = new Color(0.22f, 0.78f, 0.98f, 0.55f);
-        cornerHudBorderImage.raycastTarget = false;
-        RectTransform borderRt = borderObj.GetComponent<RectTransform>();
-        borderRt.anchorMin = Vector2.zero;
-        borderRt.anchorMax = Vector2.one;
-        borderRt.offsetMin = new Vector2(-4f, -4f);
-        borderRt.offsetMax = new Vector2(4f, 4f);
-
-        // Fundo escuro sci-fi
-        GameObject bgObj = new GameObject("FundoHudCanto", typeof(RectTransform));
+        // Fundo holográfico SDF com degradê e bordas neon, igual ao HUD da DefenseScene.
+        GameObject bgObj = new GameObject("FundoHologramaSDF", typeof(RectTransform));
         bgObj.transform.SetParent(panelObj.transform, false);
         cornerHudBgImage = bgObj.AddComponent<Image>();
-        cornerHudBgImage.color = new Color(0.02f, 0.05f, 0.12f, 0.94f);
+        cornerHudBgImage.material = cornerHudMainCardMaterial;
+        cornerHudBgImage.color = Color.white;
         cornerHudBgImage.raycastTarget = false;
         RectTransform bgRt = bgObj.GetComponent<RectTransform>();
         bgRt.anchorMin = Vector2.zero;
@@ -299,24 +301,12 @@ public class GerenteAlarme : MonoBehaviour
         bgRt.offsetMin = Vector2.zero;
         bgRt.offsetMax = Vector2.zero;
 
-        // Barra vertical lateral de destaque
-        GameObject accentObj = new GameObject("BarraLateralCor", typeof(RectTransform));
-        accentObj.transform.SetParent(panelObj.transform, false);
-        cornerHudAccentBar = accentObj.AddComponent<Image>();
-        cornerHudAccentBar.color = new Color(0.22f, 0.78f, 0.98f, 1f);
-        cornerHudAccentBar.raycastTarget = false;
-        RectTransform accentRt = accentObj.GetComponent<RectTransform>();
-        accentRt.anchorMin = new Vector2(0f, 0f);
-        accentRt.anchorMax = new Vector2(0f, 1f);
-        accentRt.pivot = new Vector2(0f, 0.5f);
-        accentRt.anchoredPosition = Vector2.zero;
-        accentRt.sizeDelta = new Vector2(12f, 0f);
-
         // Cabeçalho da etapa (ex: "OBJETIVO ATUAL [1/4]")
         GameObject headerObj = new GameObject("TituloHudCanto", typeof(RectTransform));
         headerObj.transform.SetParent(panelObj.transform, false);
         cornerHudHeaderText = headerObj.AddComponent<TextMeshProUGUI>();
         if (font != null) cornerHudHeaderText.font = font;
+        if (cornerHudTextMaterial != null) cornerHudHeaderText.fontSharedMaterial = cornerHudTextMaterial;
         cornerHudHeaderText.fontSize = 22f;
         cornerHudHeaderText.fontStyle = FontStyles.Bold;
         cornerHudHeaderText.characterSpacing = 2.5f;
@@ -335,6 +325,7 @@ public class GerenteAlarme : MonoBehaviour
             GameObject segObj = new GameObject($"ProgressoEtapa_{i + 1}", typeof(RectTransform));
             segObj.transform.SetParent(panelObj.transform, false);
             Image segImg = segObj.AddComponent<Image>();
+            segImg.material = cornerHudElementMaterial;
             segImg.color = new Color(0.22f, 0.78f, 0.98f, 0.25f);
             segImg.raycastTarget = false;
             RectTransform segRt = segObj.GetComponent<RectTransform>();
@@ -350,9 +341,10 @@ public class GerenteAlarme : MonoBehaviour
         // Linha divisória sutil abaixo do cabeçalho
         GameObject divObj = new GameObject("LinhaDivisoriaHud", typeof(RectTransform));
         divObj.transform.SetParent(panelObj.transform, false);
-        Image divImg = divObj.AddComponent<Image>();
-        divImg.color = new Color(0.35f, 0.65f, 0.90f, 0.28f);
-        divImg.raycastTarget = false;
+        cornerHudDividerImage = divObj.AddComponent<Image>();
+        cornerHudDividerImage.material = cornerHudDividerMaterial;
+        cornerHudDividerImage.color = new Color(1f, 1f, 1f, 0.65f);
+        cornerHudDividerImage.raycastTarget = false;
         RectTransform divRt = divObj.GetComponent<RectTransform>();
         divRt.anchorMin = new Vector2(0f, 0.70f);
         divRt.anchorMax = new Vector2(1f, 0.708f);
@@ -364,6 +356,7 @@ public class GerenteAlarme : MonoBehaviour
         objTextGO.transform.SetParent(panelObj.transform, false);
         cornerHudObjectiveText = objTextGO.AddComponent<TextMeshProUGUI>();
         if (font != null) cornerHudObjectiveText.font = font;
+        if (cornerHudTextMaterial != null) cornerHudObjectiveText.fontSharedMaterial = cornerHudTextMaterial;
         cornerHudObjectiveText.fontSize = 27.5f;
         cornerHudObjectiveText.fontStyle = FontStyles.Bold;
         cornerHudObjectiveText.alignment = TextAlignmentOptions.MidlineLeft;
@@ -381,6 +374,7 @@ public class GerenteAlarme : MonoBehaviour
         ctxTextGO.transform.SetParent(panelObj.transform, false);
         cornerHudContextText = ctxTextGO.AddComponent<TextMeshProUGUI>();
         if (font != null) cornerHudContextText.font = font;
+        if (cornerHudTextMaterial != null) cornerHudContextText.fontSharedMaterial = cornerHudTextMaterial;
         cornerHudContextText.fontSize = 21f;
         cornerHudContextText.alignment = TextAlignmentOptions.MidlineLeft;
         cornerHudContextText.textWrappingMode = TextWrappingModes.Normal;
@@ -394,6 +388,49 @@ public class GerenteAlarme : MonoBehaviour
 
         UpdateCornerHudPlacement();
         cornerHudCanvasObj.SetActive(false);
+    }
+
+    private void EnsureCornerHudMaterials()
+    {
+        Shader cardShader = Shader.Find("Custom/HologramHUDCard") ?? Shader.Find("UI/Default");
+        if (cardShader == null) return;
+
+        cornerHudMainCardMaterial = new Material(cardShader) { name = "SampleHUD_MainCard_Mat" };
+        cornerHudElementMaterial = new Material(cardShader) { name = "SampleHUD_Element_Mat" };
+        cornerHudDividerMaterial = new Material(cardShader) { name = "SampleHUD_Divider_Mat" };
+
+        cornerHudMainCardMaterial.SetFloat(PropCardMode, 0f);
+        cornerHudElementMaterial.SetFloat(PropCardMode, 1f);
+        cornerHudDividerMaterial.SetFloat(PropCardMode, 2f);
+        SetCornerHudDepthTest(cornerHudMainCardMaterial);
+        SetCornerHudDepthTest(cornerHudElementMaterial);
+        SetCornerHudDepthTest(cornerHudDividerMaterial);
+    }
+
+    private static void SetCornerHudDepthTest(Material material)
+    {
+        if (material != null && material.HasProperty(PropDepthTest))
+        {
+            material.SetFloat(PropDepthTest, (float)UnityEngine.Rendering.CompareFunction.Always);
+        }
+    }
+
+    private void EnsureCornerHudTextMaterial(TMP_FontAsset font)
+    {
+        if (font == null || font.material == null) return;
+
+        Shader overlayShader = Shader.Find("TextMeshPro/Distance Field Overlay");
+        if (overlayShader == null)
+        {
+            Debug.LogError("Shader TextMeshPro/Distance Field Overlay não foi encontrado; o HUD poderá ser ocultado por paredes.", this);
+            return;
+        }
+
+        cornerHudTextMaterial = new Material(font.material)
+        {
+            name = "SampleHUD_Text_Overlay_Mat",
+            shader = overlayShader
+        };
     }
 
     private void UpdateCornerHudPlacement()
@@ -480,9 +517,40 @@ public class GerenteAlarme : MonoBehaviour
             _                          => new Color(0.02f, 0.05f, 0.12f, 0.90f)
         };
 
-        if (cornerHudAccentBar != null) cornerHudAccentBar.color = accentColor;
-        if (cornerHudBorderImage != null) cornerHudBorderImage.color = new Color(accentColor.r, accentColor.g, accentColor.b, 0.48f);
-        if (cornerHudBgImage != null) cornerHudBgImage.color = bgColor;
+        Color secondaryColor = new Color(
+            accentColor.r * 0.55f,
+            accentColor.g * 0.65f,
+            Mathf.Min(1f, accentColor.b + 0.2f),
+            1f);
+        Color bgRightColor = new Color(
+            bgColor.r * 1.8f + 0.02f,
+            bgColor.g * 2.1f + 0.05f,
+            bgColor.b * 2f + 0.08f,
+            0.56f);
+
+        Shader.SetGlobalColor(PropAccentColor, accentColor);
+        Shader.SetGlobalColor(PropSecondaryColor, secondaryColor);
+        Shader.SetGlobalColor(PropBgLeftColor, bgColor);
+        Shader.SetGlobalColor(PropBgRightColor, bgRightColor);
+        Shader.SetGlobalFloat(PropDissolve, 0f);
+
+        if (cornerHudMainCardMaterial != null)
+        {
+            cornerHudMainCardMaterial.SetColor("_AccentColor", accentColor);
+            cornerHudMainCardMaterial.SetColor("_SecondaryColor", secondaryColor);
+            cornerHudMainCardMaterial.SetColor("_BgLeftColor", bgColor);
+            cornerHudMainCardMaterial.SetColor("_BgRightColor", bgRightColor);
+        }
+        if (cornerHudElementMaterial != null)
+        {
+            cornerHudElementMaterial.SetColor("_AccentColor", accentColor);
+            cornerHudElementMaterial.SetColor("_SecondaryColor", secondaryColor);
+        }
+        if (cornerHudDividerMaterial != null)
+        {
+            cornerHudDividerMaterial.SetColor("_AccentColor", accentColor);
+            cornerHudDividerMaterial.SetColor("_SecondaryColor", secondaryColor);
+        }
 
         if (cornerHudHeaderText != null)
         {
