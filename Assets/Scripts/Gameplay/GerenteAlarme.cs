@@ -453,7 +453,7 @@ public class GerenteAlarme : MonoBehaviour
             cornerHudCanvasObj.transform.SetParent(cam.transform, false);
         }
 
-        const float depth = 0.78f;
+        const float depth = 0.48f;
         float halfH = depth * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
         float halfW = halfH * cam.aspect;
 
