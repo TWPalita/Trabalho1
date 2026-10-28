@@ -28,7 +28,10 @@ public class GerenteDefesa : MonoBehaviour
     [SerializeField] private int roundsToWin = 10;
     [SerializeField] private Transform shipExplorationSpawn;
     [SerializeField] private string shipSceneName = "SampleScene";
+    // Mantido para preservar configurações antigas; o fluxo atual inicia após a introdução e coleta da arma.
+#pragma warning disable CS0414
     [SerializeField] private bool autoStartOnAwake = false;
+#pragma warning restore CS0414
 
     private List<Detrito> activeDebris = new List<Detrito>();
     private readonly List<Detrito> debrisPool = new List<Detrito>();

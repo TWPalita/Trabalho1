@@ -83,7 +83,7 @@ public class InterfaceVR : MonoBehaviour
             if (mathVisorRt != null)
             {
                 mathVisorRt.anchoredPosition = new Vector2(0f, -15f);
-                mathVisorRt.sizeDelta = new Vector2(500f, 126f);
+                mathVisorRt.sizeDelta = new Vector2(1120f, 145f);
             }
 
             Image borderBg = mathVisorTr.GetComponent<Image>();
@@ -155,10 +155,10 @@ public class InterfaceVR : MonoBehaviour
             mathQuestionText.raycastTarget = false;
         }
 
-        // 2. Painel de Status Inferior (ControlPanel_Border) com Shader Holográfico Sci-Fi
-        Transform controlBorderTr = transform.Find("ControlPanel_Border");
-        if (controlBorderTr != null)
+        // 2. Conteúdo de status integrado ao MathVisor_Border
+        if (mathVisorTr != null)
         {
+<<<<<<< Updated upstream
             controlBorderTr.SetAsFirstSibling();
 
             RectTransform controlBorderRt = controlBorderTr.GetComponent<RectTransform>();
@@ -176,12 +176,19 @@ public class InterfaceVR : MonoBehaviour
             }
 
             Transform controlInnerTr = controlBorderTr.Find("ControlPanel_Inner");
+=======
+            Transform controlInnerTr = mathVisorTr.Find("ControlPanel_Inner");
+>>>>>>> Stashed changes
             if (controlInnerTr != null)
             {
                 RectTransform innerRt = controlInnerTr.GetComponent<RectTransform>();
                 if (innerRt != null)
                 {
+<<<<<<< Updated upstream
                     innerRt.sizeDelta = new Vector2(1120f, 130f);
+=======
+                    innerRt.sizeDelta = new Vector2(1120f, 145f);
+>>>>>>> Stashed changes
                 }
 
                 Image ctrlInnerImg = controlInnerTr.GetComponent<Image>();
@@ -210,7 +217,11 @@ public class InterfaceVR : MonoBehaviour
             if (scoreValRt != null)
             {
                 scoreValRt.anchoredPosition = new Vector2(-410f, 6f);
+<<<<<<< Updated upstream
                 scoreValRt.sizeDelta = new Vector2(300f, 44f);
+=======
+                scoreValRt.sizeDelta = new Vector2(280f, 44f);
+>>>>>>> Stashed changes
             }
             scoreText.fontSize = 27f;
             scoreText.fontStyle = FontStyles.Bold;
@@ -225,7 +236,11 @@ public class InterfaceVR : MonoBehaviour
             if (energySegRt != null)
             {
                 energySegRt.anchoredPosition = new Vector2(410f, 18f);
+<<<<<<< Updated upstream
                 energySegRt.sizeDelta = new Vector2(300f, 34f);
+=======
+                energySegRt.sizeDelta = new Vector2(280f, 34f);
+>>>>>>> Stashed changes
             }
             energySegmentedText.fontSize = 21f;
             energySegmentedText.alignment = TextAlignmentOptions.Center;
@@ -239,7 +254,11 @@ public class InterfaceVR : MonoBehaviour
             if (energyPctRt != null)
             {
                 energyPctRt.anchoredPosition = new Vector2(410f, -16f);
+<<<<<<< Updated upstream
                 energyPctRt.sizeDelta = new Vector2(300f, 30f);
+=======
+                energyPctRt.sizeDelta = new Vector2(280f, 30f);
+>>>>>>> Stashed changes
             }
             energyText.fontSize = 18f;
             energyText.fontStyle = FontStyles.Bold;
@@ -419,9 +438,6 @@ public class InterfaceVR : MonoBehaviour
     {
         Transform mathVisorTr = transform.Find("MathVisor_Border");
         if (mathVisorTr != null) mathVisorTr.gameObject.SetActive(visible);
-
-        Transform controlBorderTr = transform.Find("ControlPanel_Border");
-        if (controlBorderTr != null) controlBorderTr.gameObject.SetActive(visible);
     }
 
     private void SetBackgroundHUDPanelsVisible(bool visible)

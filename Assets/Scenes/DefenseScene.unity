@@ -119,14 +119,22 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+<<<<<<< Updated upstream
 --- !u!21 &137427275
+=======
+--- !u!21 &92288007
+>>>>>>> Stashed changes
 Material:
   serializedVersion: 8
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
+<<<<<<< Updated upstream
   m_Name: HoloEmitter_Lens_Mat
+=======
+  m_Name: HoloBeam_Cone_Mat
+>>>>>>> Stashed changes
   m_Shader: {fileID: 4800000, guid: a28f7becf62e25945b8373dab345590c, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
@@ -156,6 +164,7 @@ Material:
     - _StencilOp: 0
     - _StencilReadMask: 255
     - _StencilWriteMask: 255
+<<<<<<< Updated upstream
     - _VisorMode: 2
     m_Colors:
     - _BgColor: {r: 0.015, g: 0.079999976, b: 0.17999998, a: 0.42}
@@ -164,6 +173,21 @@ Material:
     - _SecondaryColor: {r: 0.09999997, g: 0.45, b: 0.97999996, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
+=======
+    - _VisorMode: 1
+    m_Colors:
+    - _BgColor: {r: 0.015, g: 0.079999976, b: 0.17999998, a: 0.42}
+    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _PrimaryColor: {r: 0.22, g: 0.96, b: 1, a: 1}
+    - _SecondaryColor: {r: 0.08, g: 0.52, b: 0.98, a: 1}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1
+--- !u!20 &115154058 stripped
+Camera:
+  m_CorrespondingSourceObject: {fileID: 1767192439, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+  m_PrefabInstance: {fileID: 697213395}
+  m_PrefabAsset: {fileID: 0}
+>>>>>>> Stashed changes
 --- !u!1 &237578366
 GameObject:
   m_ObjectHideFlags: 0
@@ -230,7 +254,11 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: -410, y: 6}
+<<<<<<< Updated upstream
   m_SizeDelta: {x: 300, y: 44}
+=======
+  m_SizeDelta: {x: 280, y: 44}
+>>>>>>> Stashed changes
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &310582549
 CanvasRenderer:
@@ -565,6 +593,51 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!21 &603323455
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: EndPanel_HoloSDF_Mat
+  m_Shader: {fileID: 4800000, guid: a28f7becf62e25945b8373dab345590c, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _MainTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: []
+    m_Floats:
+    - _ColorMask: 15
+    - _PulseBoost: 0
+    - _RoundProgress: 0.1
+    - _Stencil: 0
+    - _StencilComp: 8
+    - _StencilOp: 0
+    - _StencilReadMask: 255
+    - _StencilWriteMask: 255
+    - _VisorMode: 3
+    m_Colors:
+    - _BgColor: {r: 0.01, g: 0.06, b: 0.14, a: 0.8}
+    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _PrimaryColor: {r: 0.2, g: 1, b: 0.72, a: 1}
+    - _SecondaryColor: {r: 0.12, g: 0.75, b: 1, a: 1}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1
 --- !u!1 &638191326
 GameObject:
   m_ObjectHideFlags: 0
@@ -994,7 +1067,11 @@ Canvas:
   m_Enabled: 1
   serializedVersion: 3
   m_RenderMode: 2
+<<<<<<< Updated upstream
   m_Camera: {fileID: 371124595}
+=======
+  m_Camera: {fileID: 115154058}
+>>>>>>> Stashed changes
   m_PlaneDistance: 100
   m_PixelPerfect: 0
   m_ReceivesEvents: 1
@@ -1020,7 +1097,10 @@ RectTransform:
   m_LocalScale: {x: 0.0024, y: 0.0024, z: 0.0024}
   m_ConstrainProportionsScale: 0
   m_Children:
+<<<<<<< Updated upstream
   - {fileID: 2129934444}
+=======
+>>>>>>> Stashed changes
   - {fileID: 819111467}
   - {fileID: 2082625259}
   m_Father: {fileID: 0}
@@ -1432,7 +1512,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
+<<<<<<< Updated upstream
   m_Material: {fileID: 137427275}
+=======
+  m_Material: {fileID: 1982223422}
+>>>>>>> Stashed changes
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
@@ -1507,7 +1591,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
+<<<<<<< Updated upstream
   m_Material: {fileID: 1274272136}
+=======
+  m_Material: {fileID: 92288007}
+>>>>>>> Stashed changes
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
@@ -1956,13 +2044,18 @@ RectTransform:
   m_Children:
   - {fileID: 780000002}
   - {fileID: 780000010}
+  - {fileID: 1131990016}
   - {fileID: 891074031}
   m_Father: {fileID: 704332797}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 0, y: -15}
+<<<<<<< Updated upstream
   m_SizeDelta: {x: 500, y: 126}
+=======
+  m_SizeDelta: {x: 1120, y: 175}
+>>>>>>> Stashed changes
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &819111468
 MonoBehaviour:
@@ -2002,6 +2095,51 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 819111466}
   m_CullTransparentMesh: 1
+--- !u!21 &828691932
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: MathVisor_HoloSDF_Mat
+  m_Shader: {fileID: 4800000, guid: a28f7becf62e25945b8373dab345590c, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _MainTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: []
+    m_Floats:
+    - _ColorMask: 15
+    - _PulseBoost: 0
+    - _RoundProgress: 0.1
+    - _Stencil: 0
+    - _StencilComp: 8
+    - _StencilOp: 0
+    - _StencilReadMask: 255
+    - _StencilWriteMask: 255
+    - _VisorMode: 0
+    m_Colors:
+    - _BgColor: {r: 0.01, g: 0.09, b: 0.2, a: 0.42}
+    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _PrimaryColor: {r: 0.18, g: 0.94, b: 1, a: 1}
+    - _SecondaryColor: {r: 0.1, g: 0.5, b: 1, a: 1}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1
 --- !u!21 &848268071
 Material:
   serializedVersion: 8
@@ -2249,7 +2387,11 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 410, y: 18}
+<<<<<<< Updated upstream
   m_SizeDelta: {x: 300, y: 34}
+=======
+  m_SizeDelta: {x: 280, y: 34}
+>>>>>>> Stashed changes
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &874415945
 CanvasRenderer:
@@ -2406,7 +2548,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
+<<<<<<< Updated upstream
   m_Material: {fileID: 1463814874}
+=======
+  m_Material: {fileID: 828691932}
+>>>>>>> Stashed changes
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
@@ -2966,14 +3112,22 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 18ddb545287c546e19cc77dc9fbb2189, type: 3}
+<<<<<<< Updated upstream
 --- !u!21 &1002390480
+=======
+--- !u!21 &1039979467
+>>>>>>> Stashed changes
 Material:
   serializedVersion: 8
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
+<<<<<<< Updated upstream
   m_Name: EndPanel_HoloSDF_Mat
+=======
+  m_Name: ControlPanel_HoloSDF_Mat
+>>>>>>> Stashed changes
   m_Shader: {fileID: 4800000, guid: a28f7becf62e25945b8373dab345590c, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
@@ -3003,12 +3157,21 @@ Material:
     - _StencilOp: 0
     - _StencilReadMask: 255
     - _StencilWriteMask: 255
+<<<<<<< Updated upstream
     - _VisorMode: 3
     m_Colors:
     - _BgColor: {r: 0.01, g: 0.06, b: 0.14, a: 0.8}
     - _Color: {r: 1, g: 1, b: 1, a: 1}
     - _PrimaryColor: {r: 0.2, g: 1, b: 0.72, a: 1}
     - _SecondaryColor: {r: 0.12, g: 0.75, b: 1, a: 1}
+=======
+    - _VisorMode: 4
+    m_Colors:
+    - _BgColor: {r: 0.01, g: 0.05, b: 0.13, a: 0.68}
+    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _PrimaryColor: {r: 0.18, g: 0.88, b: 1, a: 1}
+    - _SecondaryColor: {r: 0.08, g: 0.42, b: 0.92, a: 1}
+>>>>>>> Stashed changes
   m_BuildTextureStacks: []
   m_AllowLocking: 1
 --- !u!1 &1071160784
@@ -3184,12 +3347,16 @@ RectTransform:
   - {fileID: 874415944}
   - {fileID: 1882418235}
   - {fileID: 802893515}
-  m_Father: {fileID: 2129934444}
+  m_Father: {fileID: 819111467}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 0, y: 0}
+<<<<<<< Updated upstream
   m_SizeDelta: {x: 1120, y: 130}
+=======
+  m_SizeDelta: {x: 1120, y: 175}
+>>>>>>> Stashed changes
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1131990017
 MonoBehaviour:
@@ -3203,7 +3370,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
+<<<<<<< Updated upstream
   m_Material: {fileID: 379613729}
+=======
+  m_Material: {fileID: 1039979467}
+>>>>>>> Stashed changes
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
@@ -9592,7 +9763,11 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 410, y: -16}
+<<<<<<< Updated upstream
   m_SizeDelta: {x: 300, y: 30}
+=======
+  m_SizeDelta: {x: 280, y: 30}
+>>>>>>> Stashed changes
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &1882418236
 CanvasRenderer:
@@ -9694,6 +9869,51 @@ MonoBehaviour:
   m_hasFontAssetChanged: 0
   m_baseMaterial: {fileID: 0}
   m_maskOffset: {x: 0, y: 0, z: 0, w: 0}
+--- !u!21 &1982223422
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: HoloEmitter_Lens_Mat
+  m_Shader: {fileID: 4800000, guid: a28f7becf62e25945b8373dab345590c, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _MainTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: []
+    m_Floats:
+    - _ColorMask: 15
+    - _PulseBoost: 0
+    - _RoundProgress: 0.1
+    - _Stencil: 0
+    - _StencilComp: 8
+    - _StencilOp: 0
+    - _StencilReadMask: 255
+    - _StencilWriteMask: 255
+    - _VisorMode: 2
+    m_Colors:
+    - _BgColor: {r: 0.015, g: 0.079999976, b: 0.17999998, a: 0.42}
+    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _PrimaryColor: {r: 0.3, g: 0.98, b: 1, a: 1}
+    - _SecondaryColor: {r: 0.09999997, g: 0.45, b: 0.97999996, a: 1}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1
 --- !u!1 &1997005409
 GameObject:
   m_ObjectHideFlags: 0
@@ -9916,7 +10136,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
+<<<<<<< Updated upstream
   m_Material: {fileID: 1002390480}
+=======
+  m_Material: {fileID: 603323455}
+>>>>>>> Stashed changes
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
@@ -10079,6 +10303,7 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2114855139}
   m_CullTransparentMesh: 1
+<<<<<<< Updated upstream
 --- !u!1 &2129934443
 GameObject:
   m_ObjectHideFlags: 0
@@ -10155,6 +10380,8 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2129934443}
   m_CullTransparentMesh: 1
+=======
+>>>>>>> Stashed changes
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

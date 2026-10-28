@@ -50,6 +50,7 @@ public class IntroducaoDefesaVR : MonoBehaviour
     private Material cardElementMaterial;
     private Material cardDividerMaterial;
     private Material holoTmpMaterial;
+    private bool isCornerHudCardShaderAvailable;
 
     private static Sprite cachedSoftCircleSprite;
 
@@ -368,7 +369,13 @@ public class IntroducaoDefesaVR : MonoBehaviour
 
     private void EnsureHologramMaterials(TMP_FontAsset font)
     {
-        Shader cardShader = Shader.Find("Custom/HologramHUDCard") ?? Shader.Find("UI/Default");
+        Shader cardShader = Shader.Find("Custom/HologramHUDCard");
+        isCornerHudCardShaderAvailable = cardShader != null && cardShader.isSupported;
+        if (!isCornerHudCardShaderAvailable)
+        {
+            Debug.LogWarning("[IntroducaoDefesaVR] Shader Custom/HologramHUDCard não encontrado ou não suportado.");
+            cardShader = Shader.Find("UI/Default");
+        }
 
         if (cardMainMaterial == null)
         {
@@ -392,9 +399,19 @@ public class IntroducaoDefesaVR : MonoBehaviour
         {
             holoTmpMaterial = new Material(font.material) { name = "LiberationSans_HoloHUD_Mat" };
             Shader tmpHoloShader = Shader.Find("TextMeshPro/Distance Field - HologramHUD");
-            if (tmpHoloShader != null)
+            if (tmpHoloShader != null && tmpHoloShader.isSupported)
             {
                 holoTmpMaterial.shader = tmpHoloShader;
+                holoTmpMaterial.EnableKeyword("GLOW_ON");
+                holoTmpMaterial.SetColor("_GlowColor", new Color(0.18f, 0.82f, 1f, 0.72f));
+                holoTmpMaterial.SetFloat("_GlowOffset", 0f);
+                holoTmpMaterial.SetFloat("_GlowInner", 0.08f);
+                holoTmpMaterial.SetFloat("_GlowOuter", 0.18f);
+                holoTmpMaterial.SetFloat("_GlowPower", 0.7f);
+            }
+            else
+            {
+                Debug.LogWarning("[IntroducaoDefesaVR] Shader TextMeshPro/Distance Field - HologramHUD não encontrado ou não suportado.");
             }
         }
 
@@ -480,14 +497,15 @@ public class IntroducaoDefesaVR : MonoBehaviour
         cardObj.transform.SetParent(panelObj.transform, false);
         cornerHudMainCardImage = cardObj.AddComponent<Image>();
         cornerHudMainCardImage.material = cardMainMaterial;
-        cornerHudMainCardImage.color = Color.white;
+        cornerHudMainCardImage.color = isCornerHudCardShaderAvailable
+            ? Color.white
+            : new Color(0.02f, 0.05f, 0.12f, 0.94f);
         cornerHudMainCardImage.raycastTarget = false;
         RectTransform cardRt = cardObj.GetComponent<RectTransform>();
         cardRt.anchorMin = Vector2.zero;
         cardRt.anchorMax = Vector2.one;
         cardRt.offsetMin = Vector2.zero;
         cardRt.offsetMax = Vector2.zero;
-
         // 2. Título Tático Superior
         GameObject headerObj = new GameObject("TituloHudCanto", typeof(RectTransform));
         headerObj.transform.SetParent(panelObj.transform, false);
@@ -498,7 +516,7 @@ public class IntroducaoDefesaVR : MonoBehaviour
         cornerHudHeaderText.fontStyle = FontStyles.Bold;
         cornerHudHeaderText.characterSpacing = 3.5f;
         cornerHudHeaderText.alignment = TextAlignmentOptions.MidlineLeft;
-        cornerHudHeaderText.color = new Color(0.22f, 0.92f, 1f, 1f);
+        cornerHudHeaderText.color = Color.white;
         cornerHudHeaderText.raycastTarget = false;
         RectTransform headerRt = headerObj.GetComponent<RectTransform>();
         headerRt.anchorMin = new Vector2(0f, 0.72f);
@@ -565,7 +583,7 @@ public class IntroducaoDefesaVR : MonoBehaviour
         cornerHudContextText.fontSize = 20.5f;
         cornerHudContextText.alignment = TextAlignmentOptions.MidlineLeft;
         cornerHudContextText.textWrappingMode = TextWrappingModes.Normal;
-        cornerHudContextText.color = new Color(0.76f, 0.90f, 1.00f, 0.92f);
+        cornerHudContextText.color = new Color(0.48f, 0.82f, 0.98f, 0.96f);
         cornerHudContextText.raycastTarget = false;
         RectTransform ctxTextRt = ctxTextGO.GetComponent<RectTransform>();
         ctxTextRt.anchorMin = new Vector2(0f, 0.06f);
@@ -661,6 +679,12 @@ public class IntroducaoDefesaVR : MonoBehaviour
 
         ResetHologramShaderState();
         ApplyHologramPalette(accentColor, secondaryColor, bgLeftColor, bgRightColor);
+        if (cornerHudMainCardImage != null)
+        {
+            cornerHudMainCardImage.color = isCornerHudCardShaderAvailable
+                ? Color.white
+                : new Color(0.02f, 0.05f, 0.12f, 0.94f);
+        }
 
         int activeSteps = (!string.IsNullOrEmpty(header) && header.Contains("[2/2]")) ? 2 : 1;
         for (int i = 0; i < cornerHudStepImages.Length; i++)
@@ -673,7 +697,7 @@ public class IntroducaoDefesaVR : MonoBehaviour
 
         if (cornerHudHeaderText != null)
         {
-            cornerHudHeaderText.color = accentColor;
+            cornerHudHeaderText.color = Color.white;
             cornerHudHeaderText.text = header;
         }
 
@@ -789,7 +813,7 @@ public class IntroducaoDefesaVR : MonoBehaviour
         if (cornerHudHeaderText != null)
         {
             cornerHudHeaderText.text = "SISTEMA DE MIRA CALIBRADO  [OK]";
-            cornerHudHeaderText.color = doneAccent;
+            cornerHudHeaderText.color = Color.white;
         }
 
         ApplyHologramPalette(doneAccent, doneSecondary, bgLeft, bgRight);

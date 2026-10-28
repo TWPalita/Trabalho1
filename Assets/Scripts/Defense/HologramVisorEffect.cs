@@ -207,7 +207,8 @@ public class HologramVisorEffect : MonoBehaviour
         if (enableLightPulse)
         {
             float sinePulse = 0.5f + 0.5f * Mathf.Sin(time * pulseFrequency);
-            float totalBoost = Mathf.Clamp01(sinePulse * 0.25f + roundPulseBoost * 0.75f);
+            float flicker = (Mathf.PerlinNoise(time * 31f, 0.5f) - 0.5f) * 2f * microFlickerIntensity;
+            float totalBoost = Mathf.Clamp01(sinePulse * pulseAmplitude + roundPulseBoost * 0.75f + flicker);
 
             if (mathVisorHoloMat != null)
             {

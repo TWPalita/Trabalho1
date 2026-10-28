@@ -12,6 +12,7 @@ Shader "Custom/HologramHUDCard"
         _CardMode ("Card Element Mode (0=MainFrame, 1=FlatGradientElement, 2=GlowSweep)", Float) = 0
         _ZTest ("Depth Test", Float) = 4
 
+        [Enum(UnityEngine.Rendering.CompareFunction)] _ZTest ("Depth Test", Float) = 8
         _StencilComp ("Stencil Comparison", Float) = 8
         _Stencil ("Stencil ID", Float) = 0
         _StencilOp ("Stencil Operation", Float) = 0

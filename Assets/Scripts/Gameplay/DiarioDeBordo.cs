@@ -5,6 +5,11 @@ using UnityEngine.Events;
 using UnityEngine.XR;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
 using UnityEngine.XR.Interaction.Toolkit.UI;
+#if ENABLE_INPUT_SYSTEM
+using InputAction = UnityEngine.InputSystem.InputAction;
+using InputActionAsset = UnityEngine.InputSystem.InputActionAsset;
+using InputSystem = UnityEngine.InputSystem.InputSystem;
+#endif
 
 
 /// <summary>
@@ -35,11 +40,18 @@ public class DiarioDeBordo : MonoBehaviour
     private float cooldownTimer = 0f;
     private bool wasAdvancePressed = false;
     private bool wasBackPressed = false;
+#if ENABLE_INPUT_SYSTEM
+    private InputAction leftActivateAction;
+    private InputAction rightActivateAction;
+#endif
 
     private void Awake()
     {
         ConfigurarCanvasVR();
         ConfigurarBotoesVR();
+#if ENABLE_INPUT_SYSTEM
+        ResolveActivateActions();
+#endif
     }
 
     private void Start()
@@ -129,6 +141,14 @@ public class DiarioDeBordo : MonoBehaviour
         bool advancePressed = false;
         bool backPressed = false;
 
+#if ENABLE_INPUT_SYSTEM
+        if (leftActivateAction == null || rightActivateAction == null)
+            ResolveActivateActions();
+
+        advancePressed |= leftActivateAction != null && leftActivateAction.IsPressed();
+        advancePressed |= rightActivateAction != null && rightActivateAction.IsPressed();
+#endif
+
         // 1. Controles VR via UnityEngine.XR.InputDevices (Oculus/Meta Quest, OpenXR, PCVR)
         controllers.Clear();
         InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Controller, controllers);
@@ -138,27 +158,27 @@ public class DiarioDeBordo : MonoBehaviour
             if (!dev.isValid) continue;
 
             // Botão Primário (A no controle direito, X no controle esquerdo)
-            if (dev.TryGetFeatureValue(CommonUsages.primaryButton, out bool prim) && prim)
+            if (dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primaryButton, out bool prim) && prim)
                 advancePressed = true;
 
             // Gatilho (Trigger button ou pressão > 0.5f)
-            if (dev.TryGetFeatureValue(CommonUsages.triggerButton, out bool trigBtn) && trigBtn)
+            if (dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.triggerButton, out bool trigBtn) && trigBtn)
                 advancePressed = true;
-            else if (dev.TryGetFeatureValue(CommonUsages.trigger, out float trigVal) && trigVal > 0.5f)
+            else if (dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.trigger, out float trigVal) && trigVal > 0.5f)
                 advancePressed = true;
 
             // Botão Secundário (B no controle direito, Y no controle esquerdo)
-            if (dev.TryGetFeatureValue(CommonUsages.secondaryButton, out bool sec) && sec)
+            if (dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.secondaryButton, out bool sec) && sec)
                 backPressed = true;
 
             // Grip (Grip button ou pressão > 0.5f)
-            if (dev.TryGetFeatureValue(CommonUsages.gripButton, out bool gripBtn) && gripBtn)
+            if (dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.gripButton, out bool gripBtn) && gripBtn)
                 backPressed = true;
-            else if (dev.TryGetFeatureValue(CommonUsages.grip, out float gripVal) && gripVal > 0.5f)
+            else if (dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.grip, out float gripVal) && gripVal > 0.5f)
                 backPressed = true;
 
             // Direcional / Thumbstick (flick horizontal para avançar ou retroceder)
-            if (dev.TryGetFeatureValue(CommonUsages.primary2DAxis, out Vector2 stick))
+            if (dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primary2DAxis, out Vector2 stick))
             {
                 if (stick.x > 0.55f) advancePressed = true;
                 else if (stick.x < -0.55f) backPressed = true;
@@ -219,6 +239,37 @@ public class DiarioDeBordo : MonoBehaviour
         wasAdvancePressed = advancePressed;
         wasBackPressed = backPressed;
     }
+
+#if ENABLE_INPUT_SYSTEM
+    private void ResolveActivateActions()
+    {
+        leftActivateAction = FindActivateAction("XRI Left Interaction", "XRI LeftHand Interaction");
+        rightActivateAction = FindActivateAction("XRI Right Interaction", "XRI RightHand Interaction");
+    }
+
+    private InputAction FindActivateAction(string mapName, string fallbackMapName)
+    {
+        InputAction action = InputSystem.actions?.FindActionMap(mapName)?.FindAction("Activate");
+        if (action == null)
+            action = InputSystem.actions?.FindActionMap(fallbackMapName)?.FindAction("Activate");
+
+        if (action == null)
+        {
+            InputActionAsset[] assets = Resources.FindObjectsOfTypeAll<InputActionAsset>();
+            foreach (InputActionAsset asset in assets)
+            {
+                action = asset.FindActionMap(mapName)?.FindAction("Activate")
+                    ?? asset.FindActionMap(fallbackMapName)?.FindAction("Activate");
+                if (action != null) break;
+            }
+        }
+
+        if (action != null && !action.enabled)
+            action.Enable();
+
+        return action;
+    }
+#endif
 
     public void Avancar() => Mostrar(atual + 1);
     public void Voltar() => Mostrar(atual - 1);

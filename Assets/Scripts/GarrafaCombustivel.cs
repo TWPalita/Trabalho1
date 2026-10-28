@@ -20,7 +20,7 @@ public class GarrafaCombustivel : MonoBehaviour
 
     private void Start()
     {
-        geradorCached = FindFirstObjectByType<GeradorCombustivel>();
+        geradorCached = FindAnyObjectByType<GeradorCombustivel>();
     }
 
     private void OnEnable()
@@ -49,7 +49,7 @@ public class GarrafaCombustivel : MonoBehaviour
 
         if (geradorCached == null)
         {
-            geradorCached = FindFirstObjectByType<GeradorCombustivel>();
+            geradorCached = FindAnyObjectByType<GeradorCombustivel>();
             if (geradorCached == null) return;
         }
 

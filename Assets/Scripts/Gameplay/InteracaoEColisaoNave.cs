@@ -63,8 +63,6 @@ public class InteracaoEColisaoNave : MonoBehaviour
             // Chão e Teto cobrindo toda a extensão da nave (incluindo Sala do Gerador e Ala Direita)
             new WallSegmentDef("ColisorChao", new Vector3(0.75f, -0.22f, 1.5f), new Vector3(30f, 0.4f, 26f)),
             new WallSegmentDef("ColisorTeto", new Vector3(0.75f, 3.35f, 1.5f), new Vector3(30f, 0.4f, 26f)),
-            new WallSegmentDef("ObstaculoConsole", new Vector3(-3.39f, 0.4f, 8.8f), new Vector3(2.2f, 0.8f, 1.4f)),
-
             // 1. Quarto (Bedroom)
             WallSegmentDef.FromEndpoints("ColisorParedeQuarto_Traseira", -7.33f, -9.30f, -0.18f, -9.30f),
             WallSegmentDef.FromEndpoints("ColisorParedeQuarto_Esquerda", -7.33f, -9.30f, -7.33f, -5.17f),
@@ -696,7 +694,7 @@ public class InteracaoEColisaoNave : MonoBehaviour
 
     private void ConfigureFuelAndSpecialItems()
     {
-        GarrafaCombustivel[] galoes = FindObjectsByType<GarrafaCombustivel>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        GarrafaCombustivel[] galoes = FindObjectsByType<GarrafaCombustivel>(FindObjectsInactive.Include);
         foreach (var galao in galoes)
         {
             if (galao == null) continue;

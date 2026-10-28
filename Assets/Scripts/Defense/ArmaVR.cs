@@ -60,7 +60,6 @@ public class ArmaVR : MonoBehaviour
     private Vector3 initialRestPosition;
     private Quaternion initialRestRotation;
     private Vector3 initialRestScale = new Vector3(0.03f, 0.03f, 0.03f);
-    private bool hasSavedInitialPose = false;
     private bool isEquippedInHand = false;
     private Transform equippedControllerRoot;
     private float lastGrabTime = -10f;
@@ -225,7 +224,6 @@ public class ArmaVR : MonoBehaviour
             initialRestPosition = transform.position;
             initialRestRotation = transform.rotation;
             initialRestScale = transform.localScale;
-            hasSavedInitialPose = true;
 
             cachedGrabInteractable.selectEntered.RemoveListener(OnGrabSelected);
             cachedGrabInteractable.selectExited.RemoveListener(OnGrabDeselected);
@@ -1273,4 +1271,3 @@ public static class ArmaVREditorAutoSetup
     }
 }
 #endif
-

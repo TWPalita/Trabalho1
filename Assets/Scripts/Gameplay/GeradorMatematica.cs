@@ -33,8 +33,11 @@ public class GeradorMatematica : MonoBehaviour
 
     [Header("Configurações da Matemática")]
     [SerializeField] private MathOperationType operationType = MathOperationType.Mixed;
+    // Mantidos por compatibilidade com cenas; a progressão atual define os intervalos por rodada.
+#pragma warning disable CS0414
     [SerializeField] private int minNumber = 1;
     [SerializeField] private int maxNumber = 12;
+#pragma warning restore CS0414
     [SerializeField] private int numberOfOptions = 5;
 
     public MathProblem CurrentProblem { get; private set; }
@@ -341,4 +344,3 @@ public class GeradorMatematica : MonoBehaviour
 }
 
 public class MathManager : GeradorMatematica { }
-

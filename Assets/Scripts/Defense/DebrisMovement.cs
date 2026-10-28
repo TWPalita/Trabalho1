@@ -43,9 +43,12 @@ public class DebrisMovement : MonoBehaviour
     // Campos de compatibilidade para serialização existente
     [SerializeField] private Transform target;
     [SerializeField] private Vector3 movementDirection = Vector3.right;
+    // Esses parâmetros pertencem à implementação anterior e permanecem serializados para migração.
+#pragma warning disable CS0414
     [SerializeField] private float minDistanceToReset = 3.8f;
     [SerializeField] private float lateralWobbleAmplitude = 0.25f;
     [SerializeField] private float lateralWobbleFrequency = 0.8f;
+#pragma warning restore CS0414
 
     private float effectiveSpeed;
     private float effectiveRotationSpeed;
