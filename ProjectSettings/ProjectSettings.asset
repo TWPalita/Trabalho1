@@ -149,7 +149,10 @@ PlayerSettings:
   visionOSBundleVersion: 1.0
   tvOSBundleVersion: 1.0
   bundleVersion: 0.1.0
-  preloadedAssets: []
+  preloadedAssets:
+  - {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
+  - {fileID: -8536543878823890445, guid: 9ee3782cb32ed924589d7615dceec7f9, type: 2}
+  - {fileID: -6500262828793599965, guid: 022100a4862a96344b0507edf55731b9, type: 2}
   metroInputSource: 0
   wsaTransparentSwapchain: 0
   xboxOneDisableKinectGpuReservation: 1
@@ -939,7 +942,8 @@ PlayerSettings:
   enableDirectStorage: 0
   cloudProjectId: e44b27a4-9b24-4211-877b-861f8cefe276
   framebufferDepthMemorylessMode: 0
-  qualitySettingsNames: []
+  qualitySettingsNames:
+  - PC
   projectName: My project (2)
   organizationId: twpalita
   cloudEnabled: 0
