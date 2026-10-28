@@ -153,11 +153,11 @@ public class GerenteAlarme : MonoBehaviour
     private TMP_Text cornerHudHeaderText;
     private TMP_Text cornerHudObjectiveText;
     private TMP_Text cornerHudContextText;
-<<<<<<< Updated upstream
     private Material cornerHudMainCardMaterial;
     private Material cornerHudElementMaterial;
     private Material cornerHudDividerMaterial;
     private Material cornerHudTextMaterial;
+    private readonly List<Material> cornerHudRuntimeMaterials = new List<Material>();
 
     private static readonly int PropCardMode = Shader.PropertyToID("_CardMode");
     private static readonly int PropDepthTest = Shader.PropertyToID("_ZTest");
@@ -166,11 +166,6 @@ public class GerenteAlarme : MonoBehaviour
     private static readonly int PropBgLeftColor = Shader.PropertyToID("_HoloHudBgLeftColor");
     private static readonly int PropBgRightColor = Shader.PropertyToID("_HoloHudBgRightColor");
     private static readonly int PropDissolve = Shader.PropertyToID("_HoloHudDissolve");
-=======
-    private Material cornerHudFrameMaterial;
-    private Material cornerHudDividerMaterial;
-    private readonly List<Material> cornerHudRuntimeMaterials = new List<Material>();
->>>>>>> Stashed changes
 
     private float lastPageChangeTime = -1f;
     private const float PageChangeCooldown = 0.22f;
@@ -315,11 +310,7 @@ public class GerenteAlarme : MonoBehaviour
         headerObj.transform.SetParent(panelObj.transform, false);
         cornerHudHeaderText = headerObj.AddComponent<TextMeshProUGUI>();
         if (font != null) cornerHudHeaderText.font = font;
-<<<<<<< Updated upstream
         if (cornerHudTextMaterial != null) cornerHudHeaderText.fontSharedMaterial = cornerHudTextMaterial;
-=======
-        ConfigureCornerHudTextOverlay(cornerHudHeaderText);
->>>>>>> Stashed changes
         cornerHudHeaderText.fontSize = 22f;
         cornerHudHeaderText.fontStyle = FontStyles.Bold;
         cornerHudHeaderText.characterSpacing = 2.5f;
@@ -364,20 +355,12 @@ public class GerenteAlarme : MonoBehaviour
         divRt.offsetMin = new Vector2(24f, 0f);
         divRt.offsetMax = new Vector2(-18f, 0f);
 
-        cornerHudBorderImage.enabled = false;
-        cornerHudAccentBar.enabled = false;
-        ConfigureCornerHudMaterials(divImg);
-
         // Texto do Objetivo Principal (ex: "Objetivo: Verifique o gerador auxiliar.")
         GameObject objTextGO = new GameObject("TextoObjetivoPrincipal", typeof(RectTransform));
         objTextGO.transform.SetParent(panelObj.transform, false);
         cornerHudObjectiveText = objTextGO.AddComponent<TextMeshProUGUI>();
         if (font != null) cornerHudObjectiveText.font = font;
-<<<<<<< Updated upstream
         if (cornerHudTextMaterial != null) cornerHudObjectiveText.fontSharedMaterial = cornerHudTextMaterial;
-=======
-        ConfigureCornerHudTextOverlay(cornerHudObjectiveText);
->>>>>>> Stashed changes
         cornerHudObjectiveText.fontSize = 27.5f;
         cornerHudObjectiveText.fontStyle = FontStyles.Bold;
         cornerHudObjectiveText.alignment = TextAlignmentOptions.MidlineLeft;
@@ -395,11 +378,7 @@ public class GerenteAlarme : MonoBehaviour
         ctxTextGO.transform.SetParent(panelObj.transform, false);
         cornerHudContextText = ctxTextGO.AddComponent<TextMeshProUGUI>();
         if (font != null) cornerHudContextText.font = font;
-<<<<<<< Updated upstream
         if (cornerHudTextMaterial != null) cornerHudContextText.fontSharedMaterial = cornerHudTextMaterial;
-=======
-        ConfigureCornerHudTextOverlay(cornerHudContextText);
->>>>>>> Stashed changes
         cornerHudContextText.fontSize = 21f;
         cornerHudContextText.alignment = TextAlignmentOptions.MidlineLeft;
         cornerHudContextText.textWrappingMode = TextWrappingModes.Normal;
@@ -415,7 +394,6 @@ public class GerenteAlarme : MonoBehaviour
         cornerHudCanvasObj.SetActive(false);
     }
 
-<<<<<<< Updated upstream
     private void EnsureCornerHudMaterials()
     {
         Shader cardShader = Shader.Find("Custom/HologramHUDCard") ?? Shader.Find("UI/Default");
@@ -424,6 +402,9 @@ public class GerenteAlarme : MonoBehaviour
         cornerHudMainCardMaterial = new Material(cardShader) { name = "SampleHUD_MainCard_Mat" };
         cornerHudElementMaterial = new Material(cardShader) { name = "SampleHUD_Element_Mat" };
         cornerHudDividerMaterial = new Material(cardShader) { name = "SampleHUD_Divider_Mat" };
+        cornerHudRuntimeMaterials.Add(cornerHudMainCardMaterial);
+        cornerHudRuntimeMaterials.Add(cornerHudElementMaterial);
+        cornerHudRuntimeMaterials.Add(cornerHudDividerMaterial);
 
         cornerHudMainCardMaterial.SetFloat(PropCardMode, 0f);
         cornerHudElementMaterial.SetFloat(PropCardMode, 1f);
@@ -457,55 +438,7 @@ public class GerenteAlarme : MonoBehaviour
             name = "SampleHUD_Text_Overlay_Mat",
             shader = overlayShader
         };
-=======
-    private void ConfigureCornerHudMaterials(Image divider)
-    {
-        Shader shader = Shader.Find("Custom/HologramHUDCard");
-        if (shader == null || !shader.isSupported)
-        {
-            Debug.LogWarning("[GerenteAlarme] Shader Custom/HologramHUDCard não encontrado ou não suportado.");
-            return;
-        }
-
-        cornerHudFrameMaterial = CreateCornerHudMaterial(shader, "CornerHud_Frame", 0f);
-        cornerHudDividerMaterial = CreateCornerHudMaterial(shader, "CornerHud_Divider", 2f);
-
-        if (cornerHudBgImage != null) cornerHudBgImage.material = cornerHudFrameMaterial;
-        if (divider != null) divider.material = cornerHudDividerMaterial;
-    }
-
-    private Material CreateCornerHudMaterial(Shader shader, string materialName, float cardMode)
-    {
-        Material material = new Material(shader) { name = materialName };
-        material.SetFloat("_CardMode", cardMode);
-        cornerHudRuntimeMaterials.Add(material);
-        return material;
-    }
-
-    private void ConfigureCornerHudTextOverlay(TMP_Text text)
-    {
-        Shader hologramShader = Shader.Find("TextMeshPro/Distance Field - HologramHUD");
-        if (text == null || text.fontSharedMaterial == null || hologramShader == null || !hologramShader.isSupported)
-        {
-            if (hologramShader == null || !hologramShader.isSupported)
-                Debug.LogWarning("[GerenteAlarme] Shader TextMeshPro/Distance Field - HologramHUD não encontrado ou não suportado.");
-            return;
-        }
-
-        Material hologramMaterial = new Material(text.fontSharedMaterial)
-        {
-            name = $"CornerHud_{text.name}_Hologram",
-            shader = hologramShader
-        };
-        hologramMaterial.EnableKeyword("GLOW_ON");
-        hologramMaterial.SetColor("_GlowColor", new Color(0.18f, 0.82f, 1f, 0.72f));
-        hologramMaterial.SetFloat("_GlowOffset", 0f);
-        hologramMaterial.SetFloat("_GlowInner", 0.08f);
-        hologramMaterial.SetFloat("_GlowOuter", 0.18f);
-        hologramMaterial.SetFloat("_GlowPower", 0.7f);
-        text.fontMaterial = hologramMaterial;
-        cornerHudRuntimeMaterials.Add(hologramMaterial);
->>>>>>> Stashed changes
+        cornerHudRuntimeMaterials.Add(cornerHudTextMaterial);
     }
 
     private void UpdateCornerHudPlacement()
@@ -592,7 +525,6 @@ public class GerenteAlarme : MonoBehaviour
             _                          => new Color(0.02f, 0.05f, 0.12f, 0.90f)
         };
 
-<<<<<<< Updated upstream
         Color secondaryColor = new Color(
             accentColor.r * 0.55f,
             accentColor.g * 0.65f,
@@ -621,25 +553,6 @@ public class GerenteAlarme : MonoBehaviour
         {
             cornerHudElementMaterial.SetColor("_AccentColor", accentColor);
             cornerHudElementMaterial.SetColor("_SecondaryColor", secondaryColor);
-=======
-        if (cornerHudAccentBar != null) cornerHudAccentBar.color = accentColor;
-        if (cornerHudBorderImage != null) cornerHudBorderImage.color = new Color(accentColor.r, accentColor.g, accentColor.b, 0.55f);
-        if (cornerHudBgImage != null)
-        {
-            cornerHudBgImage.color = cornerHudFrameMaterial != null
-                ? Color.white
-                : new Color(0.02f, 0.05f, 0.12f, 0.94f);
-        }
-
-        Color secondaryColor = Color.Lerp(accentColor, Color.white, 0.22f);
-        Color bgRightColor = Color.Lerp(bgColor, accentColor, 0.18f);
-        if (cornerHudFrameMaterial != null)
-        {
-            cornerHudFrameMaterial.SetColor("_AccentColor", accentColor);
-            cornerHudFrameMaterial.SetColor("_SecondaryColor", secondaryColor);
-            cornerHudFrameMaterial.SetColor("_BgLeftColor", bgColor);
-            cornerHudFrameMaterial.SetColor("_BgRightColor", bgRightColor);
->>>>>>> Stashed changes
         }
         if (cornerHudDividerMaterial != null)
         {
