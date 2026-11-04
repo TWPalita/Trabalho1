@@ -2,6 +2,7 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.XR;
+using UnityEngine.XR;
 using UnityEngine.XR.Interaction.Toolkit.Inputs;
 
 /// <summary>
@@ -25,12 +26,18 @@ public sealed class XRTrackingFix : MonoBehaviour
     [Tooltip("Retry interval while waiting for pose readiness.")]
     float m_PollIntervalSeconds = 0.1f;
 
+    [SerializeField]
+    [Tooltip("Extra delayed restart after the first pulse (helps heavy scenes like DefenseScene).")]
+    float m_FollowUpRestartSeconds = 0.75f;
+
     Coroutine m_RestartRoutine;
     bool m_Subscribed;
+    bool m_FollowUpScheduled;
 
     void OnEnable()
     {
         EnsureInputActionsEnabled();
+        m_FollowUpScheduled = false;
 
         if (!m_Subscribed)
         {
@@ -104,13 +111,30 @@ public sealed class XRTrackingFix : MonoBehaviour
         // One extra frame so Input System can settle after enable/device add.
         yield return null;
 
+        yield return PulseRestartDrivers(reason, elapsed);
+
+        // DefenseScene / seated rig often finishes Awake after the first HMD device appears
+        // but before rotation tracking is valid. A follow-up pulse recovers without Pause.
+        if (!m_FollowUpScheduled && m_FollowUpRestartSeconds > 0f)
+        {
+            m_FollowUpScheduled = true;
+            yield return new WaitForSecondsRealtime(m_FollowUpRestartSeconds);
+            EnsureInputActionsEnabled();
+            yield return null;
+            yield return PulseRestartDrivers($"{reason}+FollowUp", elapsed + m_FollowUpRestartSeconds);
+        }
+
+        m_RestartRoutine = null;
+    }
+
+    IEnumerator PulseRestartDrivers(string reason, float waitedSeconds)
+    {
         TrackedPoseDriver[] drivers =
             FindObjectsByType<TrackedPoseDriver>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
 
         if (drivers == null || drivers.Length == 0)
         {
             Debug.LogWarning($"[XRTrackingFix] Nenhum TrackedPoseDriver encontrado ({reason}).", this);
-            m_RestartRoutine = null;
             yield break;
         }
 
@@ -137,10 +161,8 @@ public sealed class XRTrackingFix : MonoBehaviour
         }
 
         Debug.Log(
-            $"[XRTrackingFix] TrackedPoseDriver restart OK ({reenabled}, reason={reason}, waited={elapsed:0.00}s, ready={IsPoseReady()}).",
+            $"[XRTrackingFix] TrackedPoseDriver restart OK ({reenabled}, reason={reason}, waited={waitedSeconds:0.00}s, ready={IsPoseReady()}).",
             this);
-
-        m_RestartRoutine = null;
     }
 
     void EnsureInputActionsEnabled()
@@ -160,8 +182,14 @@ public sealed class XRTrackingFix : MonoBehaviour
 
     static bool IsPoseReady()
     {
-        if (InputSystem.GetDevice<XRHMD>() != null)
-            return true;
+        XRHMD hmd = InputSystem.GetDevice<XRHMD>();
+        if (hmd != null)
+        {
+            // Device presence alone is not enough — wait until rotation is actually tracking.
+            InputTrackingState state = (InputTrackingState)hmd.trackingState.ReadValue();
+            if ((state & InputTrackingState.Rotation) != 0)
+                return true;
+        }
 
         TrackedPoseDriver[] drivers =
             FindObjectsByType<TrackedPoseDriver>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
@@ -172,10 +200,12 @@ public sealed class XRTrackingFix : MonoBehaviour
             if (driver == null)
                 continue;
 
-            if (HasEnabledResolvedPose(driver.positionInput.action) ||
-                HasEnabledResolvedPose(driver.rotationInput.action))
+            if (HasEnabledResolvedPose(driver.rotationInput.action) ||
+                HasEnabledResolvedPose(driver.positionInput.action))
             {
-                return true;
+                // Bindings resolved; prefer waiting for HMD rotation when available.
+                if (hmd == null)
+                    return true;
             }
         }
 
