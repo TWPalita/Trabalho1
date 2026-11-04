@@ -65,7 +65,7 @@ public sealed class XRTrackingFix : MonoBehaviour
         }
     }
 
-    void OnDeviceChange(InputDevice device, InputDeviceChange change)
+    void OnDeviceChange(UnityEngine.InputSystem.InputDevice device, InputDeviceChange change)
     {
         if (change != InputDeviceChange.Added &&
             change != InputDeviceChange.Reconnected &&
