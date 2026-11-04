@@ -628,11 +628,12 @@ public class IntroducaoDefesaVR : MonoBehaviour
             cornerHudCanvasObj.transform.SetParent(cam.transform, false);
         }
 
-        const float depth = 0.78f;
+        // Mesmo depth/placement do GerenteAlarme (SampleScene) para o card não cortar no FOV.
+        const float depth = 0.48f;
         float halfH = depth * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
         float halfW = halfH * cam.aspect;
 
-        float baseWorldHeight = UnityEngine.XR.XRSettings.isDeviceActive ? (halfH * 0.46f) : (halfH * 0.56f);
+        float baseWorldHeight = UnityEngine.XR.XRSettings.isDeviceActive ? (halfH * 0.36f) : (halfH * 0.56f);
         float compactMultiplier = Mathf.Lerp(1f, 0.68f, combatCompactBlend);
         float dynamicScale = (baseWorldHeight * compactMultiplier) / 230f;
 
@@ -644,13 +645,13 @@ public class IntroducaoDefesaVR : MonoBehaviour
 
         if (UnityEngine.XR.XRSettings.isDeviceActive)
         {
-            localX = Mathf.Clamp(-halfW * 0.46f, -0.26f, -0.12f);
-            localY = Mathf.Clamp(halfH * Mathf.Lerp(0.46f, 0.54f, combatCompactBlend), 0.10f, 0.22f);
+            localX = Mathf.Clamp(-halfW * 0.20f, -0.12f, -0.04f);
+            localY = Mathf.Clamp(halfH * Mathf.Lerp(0.20f, 0.28f, combatCompactBlend), 0.04f, 0.12f);
         }
         else
         {
-            localX = -halfW + cardHalfW + (halfW * 0.028f);
-            localY = halfH - cardHalfH - (halfH * Mathf.Lerp(0.042f, 0.025f, combatCompactBlend));
+            localX = -halfW + cardHalfW + (halfW * 0.035f);
+            localY = halfH - cardHalfH - (halfH * Mathf.Lerp(0.045f, 0.025f, combatCompactBlend));
         }
 
         cornerHudCanvasObj.transform.localPosition = new Vector3(localX, localY, depth);

@@ -457,8 +457,8 @@ public class GerenteAlarme : MonoBehaviour
         float halfH = depth * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
         float halfW = halfH * cam.aspect;
 
-        // Dimensiona automaticamente para ocupar ~28% da altura da tela (grande e super legível!)
-        float targetWorldHeight = UnityEngine.XR.XRSettings.isDeviceActive ? (halfH * 0.46f) : (halfH * 0.56f);
+        // No headset: card um pouco menor e bem mais perto do centro para não cortar no FOV.
+        float targetWorldHeight = UnityEngine.XR.XRSettings.isDeviceActive ? (halfH * 0.36f) : (halfH * 0.56f);
         float dynamicScale = targetWorldHeight / 230f;
 
         float cardHalfW = (640f * dynamicScale) * 0.5f;
@@ -469,9 +469,9 @@ public class GerenteAlarme : MonoBehaviour
 
         if (UnityEngine.XR.XRSettings.isDeviceActive)
         {
-            // No headset VR, posiciona bem visível no quadrante superior esquerdo
-            localX = Mathf.Clamp(-halfW * 0.46f, -0.26f, -0.12f);
-            localY = Mathf.Clamp(halfH * 0.46f, 0.10f, 0.19f);
+            // Puxa claramente para o centro do visor (evita clipping nas bordas do headset).
+            localX = Mathf.Clamp(-halfW * 0.20f, -0.12f, -0.04f);
+            localY = Mathf.Clamp(halfH * 0.20f, 0.04f, 0.10f);
         }
         else
         {
